@@ -1,0 +1,23 @@
+info:
+  name: online-shop
+stores:
+  customer:
+    name: customers
+    reason: Persist customer information.
+    trace:
+      operations:
+        - createCustomer
+        - getCustomer
+    fields:
+      id:
+        name: id
+        type:
+          name: integer
+        nullable: false
+      publicId:
+        name: public_id
+        type:
+          name: char
+          length: 26
+        nullable: false
+        format: ulid

@@ -1,0 +1,148 @@
+data-sketch: 1.0.0-draft.0
+
+info:
+  name: online-shop
+
+sources:
+  openapi: openapi/openapi.yaml
+
+stores:
+  customer:
+    name: customers
+    reason: Persist customer information.
+    trace:
+      operations:
+        - createCustomer
+        - getCustomer
+
+    fields:
+      id:
+        name: id
+        type:
+          name: integer
+        nullable: false
+
+      publicId:
+        name: public_id
+        type:
+          name: char
+          length: 26
+        nullable: false
+        format: ulid
+        aliases:
+          - customer number
+          - customer code
+
+      name:
+        name: name
+        type:
+          name: varchar
+          length: 100
+        nullable: false
+        aliases:
+          - customer full name
+
+    keys:
+      primary:
+        name: pk_customers
+        fields:
+          - id
+
+      unique:
+        - name: ux_customers_public_id
+          fields:
+            - publicId
+
+  order:
+    name: orders
+    reason: Order operations need to create, read, list, and cancel orders.
+    trace:
+      operations:
+        - createOrder
+        - getOrderDetail
+        - cancelOrder
+        - listOrders
+
+    fields:
+      id:
+        name: id
+        type:
+          name: integer
+        nullable: false
+
+      publicId:
+        name: public_id
+        type:
+          name: char
+          length: 26
+        nullable: false
+        format: ulid
+        aliases:
+          - order number
+
+      customerId:
+        name: customer_id
+        type:
+          name: integer
+        nullable: false
+        aliases:
+          - buyer customer
+
+      status:
+        name: status
+        type:
+          name: varchar
+          length: 20
+        nullable: false
+        aliases:
+          - order state
+          - fulfillment status
+        enum:
+          - created
+          - cancelled
+
+      createdAt:
+        name: created_at
+        type:
+          name: timestamp
+        nullable: false
+
+      updatedAt:
+        name: updated_at
+        type:
+          name: timestamp
+        nullable: false
+
+    keys:
+      primary:
+        name: pk_orders
+        fields:
+          - id
+
+      unique:
+        - name: ux_orders_public_id
+          fields:
+            - publicId
+
+      foreign:
+        - name: fk_orders_customer
+          fields:
+            - customerId
+          references:
+            store: customer
+            fields:
+              - id
+          onDelete: restrict
+          onUpdate: restrict
+
+    indexes:
+      - name: ix_orders_status
+        fields:
+          - status
+        reason: Used to search orders by status.
+
+      - name: ix_orders_customer_created_at
+        fields:
+          - customerId
+          - createdAt
+        reason: Used to list orders for a customer.

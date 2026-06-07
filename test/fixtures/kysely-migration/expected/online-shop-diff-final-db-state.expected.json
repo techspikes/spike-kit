@@ -1,0 +1,28 @@
+{
+  "tables": ["orders", "shop_customers"],
+  "columns": [
+    "orders.created_at",
+    "orders.customer_id",
+    "orders.fulfilled_at",
+    "orders.fulfillment_status",
+    "orders.id",
+    "orders.public_id",
+    "orders.status",
+    "orders.updated_at",
+    "shop_customers.customer_public_id",
+    "shop_customers.display_name",
+    "shop_customers.id"
+  ],
+  "constraints": [
+    "fk_orders_customer",
+    "pk_orders",
+    "pk_shop_customers",
+    "ux_orders_public_id",
+    "ux_shop_customers_public_id"
+  ],
+  "indexes": [
+    "ix_orders_customer_created_at",
+    "ix_orders_fulfillment_status",
+    "ix_orders_status"
+  ]
+}

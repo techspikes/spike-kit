@@ -1,0 +1,10 @@
+openapi: 3.0.3
+info:
+  title: Online Shop API
+paths:
+  /customers:
+    post:
+      operationId: createCustomer
+    broken:
+      - invalid
+        child: value

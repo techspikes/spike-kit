@@ -1,0 +1,17 @@
+# Dependencies
+node_modules/
+
+# Build and test outputs
+coverage/
+.tmp/
+
+# Generative AI tooling
+.agents/
+.claude
+.codex/
+AGENTS.md
+
+# Local workspace files
+.devcontainer/
+.local/
+.scripts/

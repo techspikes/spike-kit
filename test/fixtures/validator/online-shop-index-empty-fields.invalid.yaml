@@ -1,0 +1,21 @@
+data-sketch: 1.0.0-draft.0
+info:
+  name: online-shop
+stores:
+  order:
+    name: orders
+    reason: List orders by status.
+    trace:
+      operations:
+        - listOrders
+    fields:
+      status:
+        name: status
+        type:
+          name: varchar
+          length: 20
+        nullable: false
+    indexes:
+      - name: ix_orders_status
+        fields: []
+        reason: Used to list orders by status.

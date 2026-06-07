@@ -1,0 +1,29 @@
+data-sketch: 1.0.0-draft.0
+info:
+  name: online-shop
+stores:
+  customer:
+    name: customers
+    reason: Persist customer information.
+    trace:
+      operations:
+        - createCustomer
+    fields:
+      id:
+        name: id
+        type:
+          name: integer
+        nullable: false
+  orderDraft:
+    name: order_drafts
+    tentative: true
+    reason: Persist draft orders that need human review before acceptance.
+    trace:
+      operations:
+        - createOrder
+    fields:
+      id:
+        name: id
+        type:
+          name: integer
+        nullable: false

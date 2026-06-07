@@ -1,0 +1,51 @@
+data-sketch: 1.0.0-draft.0
+info:
+  name: online-shop
+stores:
+  customer:
+    name: customers
+    reason: Persist customer information.
+    trace:
+      operations:
+        - createCustomer
+    fields:
+      id:
+        name: id
+        type:
+          name: integer
+        nullable: false
+  order:
+    name: orders
+    reason: Persist orders for customer purchases.
+    trace:
+      operations:
+        - createOrder
+    fields:
+      id:
+        name: id
+        type:
+          name: integer
+        nullable: false
+      customerId:
+        name: customer_id
+        type:
+          name: integer
+        nullable: false
+      createdAt:
+        name: created_at
+        type:
+          name: timestamp
+        nullable: false
+    keys:
+      foreign:
+        - name: fk_orders_customer
+          fields:
+            - customerId
+          references:
+            store: customer
+            fields:
+              - id
+    indexes:
+      - name: ix_orders_created_at
+        fields:
+          - field: createdAt

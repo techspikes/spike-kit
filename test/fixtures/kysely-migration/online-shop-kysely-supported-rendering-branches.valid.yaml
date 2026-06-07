@@ -1,0 +1,125 @@
+data-sketch: 1.0.0-draft.0
+info:
+  name: online-shop
+stores:
+  customer:
+    name: customers
+    reason: Persist customer information.
+    trace:
+      operations:
+        - createCustomer
+    fields:
+      id:
+        name: id
+        type:
+          name: integer
+        nullable: false
+      replacementId:
+        name: replacement_id
+        type:
+          name: integer
+        nullable: true
+      fallbackId:
+        name: fallback_id
+        type:
+          name: integer
+        nullable: false
+      auditId:
+        name: audit_id
+        type:
+          name: integer
+        nullable: false
+    keys:
+      primary:
+        name: pk_customers
+        fields:
+          - id
+  product:
+    name: products
+    reason: Persist product catalog values.
+    trace:
+      operations:
+        - createProduct
+    fields:
+      id:
+        name: id
+        type:
+          name: integer
+        nullable: false
+        default: 0
+      price:
+        name: price
+        type:
+          name: decimal
+          precision: 18
+          scale: 2
+        nullable: false
+        default: 0.5
+      rating:
+        name: rating
+        type:
+          name: numeric
+          precision: 3
+          scale: 0
+        nullable: true
+        default: null
+      status:
+        name: status
+        type:
+          name: varchar
+          length: 20
+        nullable: false
+        default: available
+      active:
+        name: active
+        type:
+          name: boolean
+        nullable: false
+        default: true
+      notes:
+        name: notes
+        type:
+          name: varchar
+          length: 200
+        nullable: true
+      customerId:
+        name: customer_id
+        type:
+          name: integer
+        nullable: true
+      fallbackCustomerId:
+        name: fallback_customer_id
+        type:
+          name: integer
+        nullable: false
+      auditCustomerId:
+        name: audit_customer_id
+        type:
+          name: integer
+        nullable: false
+    keys:
+      foreign:
+        - name: fk_products_customer
+          fields:
+            - customerId
+          references:
+            store: customer
+            fields:
+              - id
+          onDelete: setNull
+        - name: fk_products_fallback_customer
+          fields:
+            - fallbackCustomerId
+          references:
+            store: customer
+            fields:
+              - fallbackId
+          onUpdate: setDefault
+        - name: fk_products_audit_customer
+          fields:
+            - auditCustomerId
+          references:
+            store: customer
+            fields:
+              - auditId
+          onDelete: noAction

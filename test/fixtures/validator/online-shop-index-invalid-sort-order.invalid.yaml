@@ -1,0 +1,22 @@
+data-sketch: 1.0.0-draft.0
+info:
+  name: online-shop
+stores:
+  order:
+    name: orders
+    reason: List orders by creation time.
+    trace:
+      operations:
+        - listOrders
+    fields:
+      createdAt:
+        name: created_at
+        type:
+          name: timestamp
+        nullable: false
+    indexes:
+      - name: ix_orders_created_at
+        fields:
+          - field: createdAt
+            order: newest
+        reason: Used to list newest orders first.

@@ -1,0 +1,30 @@
+data-sketch: 1.0.0-draft.0
+info:
+  name: online-shop
+stores:
+  order:
+    name: orders
+    reason: Persist orders.
+    trace:
+      operations:
+        - createOrder
+    fields:
+      id:
+        name: id
+        type:
+          name: integer
+        nullable: false
+      status:
+        name: status
+        type:
+          name: varchar
+          length: 20
+        nullable: false
+        enum:
+          - created
+          - cancelled
+    keys:
+      primary:
+        name: pk_orders
+        fields:
+          - id

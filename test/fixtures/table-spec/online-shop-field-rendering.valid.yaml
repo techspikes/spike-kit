@@ -1,0 +1,84 @@
+data-sketch: 1.0.0-draft.0
+info:
+  name: online-shop
+stores:
+  product:
+    name: products
+    reason: |-
+      Store products | prices.
+      Keep catalog values available.
+    trace:
+      operations:
+        - createProduct
+    fields:
+      id:
+        name: id
+        type:
+          name: integer
+        nullable: false
+        default: 0
+      price:
+        name: price
+        type:
+          name: decimal
+          precision: 18
+          scale: 2
+        nullable: false
+        default: 0.5
+      rating:
+        name: rating
+        type:
+          name: numeric
+          precision: 3
+        nullable: true
+        default: null
+      active:
+        name: active
+        type:
+          name: boolean
+        nullable: false
+        default: true
+      notes:
+        name: notes
+        type:
+          name: varchar
+          length: 200
+        nullable: true
+      contactEmail:
+        name: contact_email
+        type:
+          name: varchar
+          length: 254
+        nullable: true
+        format: email
+      status:
+        name: status
+        type:
+          name: varchar
+          length: 20
+        nullable: false
+        default: available
+        aliases:
+          - catalog | state
+          - availability label
+        enum:
+          - available
+          - discontinued
+    keys:
+      primary:
+        name: pk_products
+        fields:
+          - id
+          - status
+      unique:
+        - name: ux_products_price_rating
+          fields:
+            - price
+            - rating
+    indexes:
+      - name: ix_products_status
+        fields:
+          - status
+        reason: |-
+          Used for product | catalog filtering.
+          Reviewed during catalog maintenance.

@@ -1,0 +1,18 @@
+data-sketch: 1.0.0-draft.0
+info:
+  name: online-shop
+stores:
+  product:
+    name: products
+    reason: Persist product prices.
+    trace:
+      operations:
+        - listProducts
+    fields:
+      price:
+        name: price
+        type:
+          name: decimal
+          precision: 18
+          scale: -1
+        nullable: false

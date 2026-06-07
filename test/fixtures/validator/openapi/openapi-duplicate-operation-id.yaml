@@ -1,0 +1,20 @@
+openapi: 3.0.3
+
+info:
+  title: Online Shop API
+  version: 1.0.0
+
+paths:
+  /customers:
+    post:
+      operationId: createCustomer
+      responses:
+        '201':
+          description: Customer created
+
+  /customers/search:
+    get:
+      operationId: createCustomer
+      responses:
+        '200':
+          description: Customer search result

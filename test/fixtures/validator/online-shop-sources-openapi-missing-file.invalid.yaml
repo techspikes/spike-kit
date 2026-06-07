@@ -1,0 +1,26 @@
+data-sketch: 1.0.0-draft.0
+info:
+  name: online-shop
+sources:
+  openapi: ./does-not-exist.yaml
+stores:
+  customer:
+    name: customers
+    reason: Persist customer information.
+    trace:
+      operations:
+        - createCustomer
+        - getCustomer
+    fields:
+      id:
+        name: id
+        type:
+          name: integer
+        nullable: false
+      publicId:
+        name: public_id
+        type:
+          name: char
+          length: 26
+        nullable: false
+        format: ulid

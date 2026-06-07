@@ -1,0 +1,58 @@
+{
+  "private": true,
+  "name": "@techspikes/spike-kit",
+  "version": "1.0.0-draft.0",
+  "description": "Specification and tools for agile teams to quickly sketch disposable data stores for user stories.",
+  "author": "knzbr <87257088+knzbr@users.noreply.github.com>",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build": "tsc --noEmit && esbuild src/cli.ts --bundle --packages=external --platform=node --format=esm --outfile=dist/cli.js --banner:js='#!/usr/bin/env node' --minify",
+    "lint": "biome check .",
+    "lint:fix": "biome check --fix .",
+    "test": "tsc --noEmit && c8 --100 node --test  test/validator.test.ts test/cli.test.ts test/commands-check.test.ts test/commands-table-spec.test.ts test/commands-kysely-migration.test.ts",
+    "test:smoke": "npm run build && node --test test/smoke-cli.test.ts"
+  },
+  "bin": {
+    "shot": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "docs/valuable-data-specification-v1.md",
+    "docs/shot-check-command-spec.md",
+    "docs/shot-kysely-migration-command-spec.md",
+    "docs/shot-table-spec-command-spec.md"
+  ],
+  "dependencies": {
+    "@clack/prompts": "^0.11.0",
+    "js-yaml": "^4.1.0",
+    "mdast-util-frontmatter": "^2.0.1",
+    "mdast-util-gfm-table": "^2.0.0",
+    "mdast-util-to-markdown": "^2.1.2",
+    "zod": "^4.1.13"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.4.16",
+    "@electric-sql/pglite": "^0.5.1",
+    "@tsconfig/node22": "^22.0.5",
+    "@types/js-yaml": "^4.0.9",
+    "@types/mdast": "^4.0.4",
+    "@types/node": "^22.19.20",
+    "c8": "^10.1.3",
+    "esbuild": "^0.27.1",
+    "kysely": "^0.29.2",
+    "typescript": "^6.0.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/techspikes/spike-kit.git"
+  },
+  "bugs": {
+    "url": "https://github.com/techspikes/spike-kit/issues"
+  },
+  "homepage": "https://github.com/techspikes/spike-kit#readme",
+  "engines": {
+    "node": ">=22",
+    "npm": ">=10"
+  }
+}

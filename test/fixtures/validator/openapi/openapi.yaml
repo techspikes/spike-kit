@@ -1,0 +1,52 @@
+openapi: 3.0.3
+
+info:
+  title: Online Shop API
+  version: 1.0.0
+
+paths:
+  /customers:
+    post:
+      operationId: createCustomer
+      summary: Create a customer
+      responses:
+        '201':
+          description: Customer created
+
+  /customers/{customerId}:
+    get:
+      operationId: getCustomer
+      summary: Get a customer
+      responses:
+        '200':
+          description: Customer detail
+
+  /orders:
+    get:
+      operationId: listOrders
+      summary: List orders
+      responses:
+        '200':
+          description: Order list
+    post:
+      operationId: createOrder
+      summary: Create an order
+      responses:
+        '201':
+          description: Order created
+
+  /orders/{orderId}:
+    get:
+      operationId: getOrderDetail
+      summary: Get an order
+      responses:
+        '200':
+          description: Order detail
+
+  /orders/{orderId}/cancel:
+    post:
+      operationId: cancelOrder
+      summary: Cancel an order
+      responses:
+        '200':
+          description: Order cancelled

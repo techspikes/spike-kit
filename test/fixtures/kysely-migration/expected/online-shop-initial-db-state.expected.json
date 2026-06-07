@@ -1,0 +1,22 @@
+{
+  "tables": ["customers", "orders"],
+  "columns": [
+    "customers.id",
+    "customers.name",
+    "customers.public_id",
+    "orders.created_at",
+    "orders.customer_id",
+    "orders.id",
+    "orders.public_id",
+    "orders.status",
+    "orders.updated_at"
+  ],
+  "constraints": [
+    "fk_orders_customer",
+    "pk_customers",
+    "pk_orders",
+    "ux_customers_public_id",
+    "ux_orders_public_id"
+  ],
+  "indexes": ["ix_orders_customer_created_at", "ix_orders_status"]
+}

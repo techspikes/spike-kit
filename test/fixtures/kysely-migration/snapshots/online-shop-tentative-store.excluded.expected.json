@@ -1,0 +1,26 @@
+{
+  "data-sketch/db-projection-snapshot": "1.0.0-draft.0",
+  "tables": [
+    {
+      "id": "customer",
+      "name": "customers",
+      "columns": [
+        {
+          "id": "id",
+          "name": "id",
+          "type": {
+            "name": "integer"
+          },
+          "nullable": false,
+          "default": {
+            "kind": "omitted"
+          }
+        }
+      ],
+      "uniqueConstraints": [],
+      "foreignKeys": [],
+      "indexes": [],
+      "checkConstraints": []
+    }
+  ]
+}

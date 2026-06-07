@@ -1,0 +1,17 @@
+data-sketch: 1.0.0-draft.0
+info:
+  name: online-shop
+stores:
+  customer:
+    name: customers
+    reason: Persist customer information.
+    trace:
+      operations:
+        - createCustomer
+    fields:
+      code:
+        name: code
+        type:
+          name: varchar
+          length: 0
+        nullable: false

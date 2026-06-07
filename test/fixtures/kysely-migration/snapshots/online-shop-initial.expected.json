@@ -1,0 +1,177 @@
+{
+  "data-sketch/db-projection-snapshot": "1.0.0-draft.0",
+  "tables": [
+    {
+      "id": "customer",
+      "name": "customers",
+      "columns": [
+        {
+          "id": "id",
+          "name": "id",
+          "type": {
+            "name": "integer"
+          },
+          "nullable": false,
+          "default": {
+            "kind": "omitted"
+          }
+        },
+        {
+          "id": "publicId",
+          "name": "public_id",
+          "type": {
+            "name": "char",
+            "length": 26
+          },
+          "nullable": false,
+          "default": {
+            "kind": "omitted"
+          }
+        },
+        {
+          "id": "name",
+          "name": "name",
+          "type": {
+            "name": "varchar",
+            "length": 100
+          },
+          "nullable": false,
+          "default": {
+            "kind": "omitted"
+          }
+        }
+      ],
+      "uniqueConstraints": [
+        {
+          "name": "ux_customers_public_id",
+          "columns": ["public_id"]
+        }
+      ],
+      "foreignKeys": [],
+      "indexes": [],
+      "checkConstraints": [],
+      "primaryKey": {
+        "name": "pk_customers",
+        "columns": ["id"]
+      }
+    },
+    {
+      "id": "order",
+      "name": "orders",
+      "columns": [
+        {
+          "id": "id",
+          "name": "id",
+          "type": {
+            "name": "integer"
+          },
+          "nullable": false,
+          "default": {
+            "kind": "omitted"
+          }
+        },
+        {
+          "id": "publicId",
+          "name": "public_id",
+          "type": {
+            "name": "char",
+            "length": 26
+          },
+          "nullable": false,
+          "default": {
+            "kind": "omitted"
+          }
+        },
+        {
+          "id": "customerId",
+          "name": "customer_id",
+          "type": {
+            "name": "integer"
+          },
+          "nullable": false,
+          "default": {
+            "kind": "omitted"
+          }
+        },
+        {
+          "id": "status",
+          "name": "status",
+          "type": {
+            "name": "varchar",
+            "length": 20
+          },
+          "nullable": false,
+          "default": {
+            "kind": "omitted"
+          }
+        },
+        {
+          "id": "createdAt",
+          "name": "created_at",
+          "type": {
+            "name": "timestamp"
+          },
+          "nullable": false,
+          "default": {
+            "kind": "omitted"
+          }
+        },
+        {
+          "id": "updatedAt",
+          "name": "updated_at",
+          "type": {
+            "name": "timestamp"
+          },
+          "nullable": false,
+          "default": {
+            "kind": "omitted"
+          }
+        }
+      ],
+      "uniqueConstraints": [
+        {
+          "name": "ux_orders_public_id",
+          "columns": ["public_id"]
+        }
+      ],
+      "foreignKeys": [
+        {
+          "name": "fk_orders_customer",
+          "columns": ["customer_id"],
+          "references": {
+            "table": "customers",
+            "columns": ["id"]
+          },
+          "onDelete": "restrict",
+          "onUpdate": "restrict"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "ix_orders_status",
+          "columns": [
+            {
+              "name": "status"
+            }
+          ]
+        },
+        {
+          "name": "ix_orders_customer_created_at",
+          "columns": [
+            {
+              "name": "customer_id"
+            },
+            {
+              "name": "created_at"
+            }
+          ]
+        }
+      ],
+      "checkConstraints": [],
+      "primaryKey": {
+        "name": "pk_orders",
+        "columns": ["id"]
+      }
+    }
+  ]
+}

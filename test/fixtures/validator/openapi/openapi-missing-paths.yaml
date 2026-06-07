@@ -1,0 +1,5 @@
+openapi: 3.0.3
+
+info:
+  title: Online Shop API
+  version: 1.0.0

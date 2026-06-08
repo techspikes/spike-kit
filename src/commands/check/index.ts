@@ -1,33 +1,44 @@
-import { writeSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
-import { intro, log, outro } from '@clack/prompts'
-import pc from 'picocolors'
-import { checkDataSketch } from './lib.ts'
+import { logger } from '../../core/logger.ts'
+import { shot } from './lib.ts'
 
-const colors = pc.createColors(true)
+type ParsedArgs =
+  | {
+      isHelp: true
+    }
+  | {
+      isHelp: false
+      path: string
+    }
 
-const usage = [
-  'Usage: shot check <file>',
-  '',
-  'Validate a Valuable Data Specification v1 YAML or JSON file.',
-  '',
-  'Options:',
-  '  -h, --help  Show this help'
-].join('\n')
+export async function runSteps(args: string[]) {
+  const options = stepParseArgs(args)
 
-export const command = {
-  name: 'check',
-  summary: 'Validate a Valuable Data Specification v1 YAML or JSON file',
-  usage,
-  run: runCheckCommand
+  if (options.isHelp) return
+
+  logger.info('Data Sketch validation')
+
+  const spec = await stepReadSpec(options.path)
+  await stepCheckDataSketch(options.path, spec)
+
+  logger.info('Data Sketch is valid')
 }
 
-async function runCheckCommand(args: string[]) {
-  let parsed: ReturnType<typeof parseArgs>
+function stepParseArgs(args: string[]): ParsedArgs {
+  const usage = () =>
+    [
+      'Usage: shot check <file>',
+      '',
+      'Validate a Valuable Data Specification v1 YAML or JSON file.',
+      '',
+      'Options:',
+      '  -h, --help  Show this help'
+    ].join('\n')
+
   try {
-    parsed = parseArgs({
+    const parsed = parseArgs({
       args,
       allowPositionals: true,
       strict: true,
@@ -35,69 +46,56 @@ async function runCheckCommand(args: string[]) {
         help: { type: 'boolean', short: 'h' }
       }
     })
+
+    if (parsed.values.help === true) {
+      logger.info(usage())
+      return { isHelp: true }
+    }
+
+    if (
+      parsed.positionals.length !== 1 ||
+      parsed.positionals[0] === undefined
+    ) {
+      throw new Error('missing file argument')
+    }
+
+    return {
+      isHelp: false,
+      path: parsed.positionals[0]
+    }
   } catch (error) {
-    writeOptionError((error as Error).message)
+    logger.error(`Error: ${(error as Error).message}\n\n${usage()}`)
     throw new Error((error as Error).message)
   }
-  if (parsed.values.help === true) {
-    writeSync(1, `${usage}\n`)
-    return
-  }
-  if (parsed.positionals.length !== 1) {
-    writeOptionError('missing file argument')
-    throw new Error('missing file argument')
-  }
-  const filePath = parsed.positionals[0]
+}
 
-  intro('Data Sketch validation')
-
-  let source: string
+async function stepReadSpec(path: string) {
   try {
-    source = await readFile(filePath, 'utf8')
-    log.success('Data Sketch read')
+    const spec = await readFile(path, 'utf8')
+    logger.info('Data Sketch read')
+    return spec
   } catch (error) {
-    log.error('Reading Data Sketch failed')
-    writeReason((error as Error).message)
-    outro(colors.red('Failed'))
-    await flushStdout()
+    logger.error('Reading Data Sketch failed')
+    logger.error((error as Error).message)
     throw new Error((error as Error).message)
   }
+}
 
-  const result = await checkDataSketch(source, {
-    sourceName: filePath,
-    loadOpenApiSource: source =>
-      readFile(resolve(dirname(filePath), source), 'utf8'),
-    onEvent: event => {
-      if (event.type === 'validated') {
-        log.success('Validating Data Sketch')
-      }
+async function stepCheckDataSketch(path: string, spec: string) {
+  const output = await shot({
+    spec,
+    sources: {
+      openapi: (source: string) =>
+        readFile(resolve(dirname(path), source), 'utf8')
     }
   })
-  if (result !== '') {
-    log.error('Validating Data Sketch failed')
-    writeValidationIssues(result)
-    outro(colors.red('Failed'))
-    await flushStdout()
-    throw new Error(result)
+
+  if (!output.isValid) {
+    const message = output.issues.map(issue => issue.message).join('\n')
+    logger.error('Validating Data Sketch failed')
+    logger.error(message)
+    throw new Error(message)
   }
 
-  log.success('Data Sketch is valid')
-  outro(colors.green('Succeeded'))
-  await flushStdout()
-}
-
-function flushStdout() {
-  return new Promise<void>(resolve => process.stdout.write('', () => resolve()))
-}
-
-function writeOptionError(reason: string) {
-  writeSync(2, `Error: ${reason}\n\n${usage}\n`)
-}
-
-function writeValidationIssues(messages: string) {
-  process.stdout.write(`${messages}\n`)
-}
-
-function writeReason(reason: string) {
-  process.stdout.write(`${reason}\n`)
+  logger.info('Validating Data Sketch')
 }

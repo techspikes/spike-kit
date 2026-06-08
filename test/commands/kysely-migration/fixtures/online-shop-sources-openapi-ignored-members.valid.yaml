@@ -4,7 +4,7 @@ info:
   name: online-shop
 
 sources:
-  openapi: openapi/openapi-noisy.yaml
+  openapi: openapi/openapi-ignored-members.yaml
 
 stores:
   customer:

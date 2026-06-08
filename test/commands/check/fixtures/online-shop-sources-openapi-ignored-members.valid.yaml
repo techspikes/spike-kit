@@ -4,7 +4,7 @@ info:
   name: online-shop
 
 sources:
-  openapi: test/fixtures/validator/openapi/openapi.yaml
+  openapi: openapi/openapi-ignored-members.yaml
 
 stores:
   customer:

@@ -1,26 +1,35 @@
-import { writeSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { command as checkCommand } from './commands/check/index.ts'
+import { pathToFileURL } from 'node:url'
+import { runSteps as runCheckSteps } from './commands/check/index.ts'
 import { command as kyselyMigrationCommand } from './commands/kysely-migration/index.ts'
-import { command as tableSpecCommand } from './commands/table-spec/index.ts'
+import { runSteps as runTableSpecSteps } from './commands/table-spec/index.ts'
+import { logger } from './core/logger.ts'
 
-const require = createRequire(import.meta.url)
-const packageJson = require('../package.json') as { version: string }
+const REQUIRE = createRequire(import.meta.url)
+const PACKAGE_JSON = REQUIRE('../package.json') as { version: string }
 
 type Command = {
   name: string
   summary: string
-  usage: string
+  usage?: string
   run(args: string[]): Promise<void>
 }
 
-const commands: Command[] = [
-  checkCommand,
+const COMMANDS: Command[] = [
+  {
+    name: 'check',
+    summary: 'Validate a Valuable Data Specification v1 YAML or JSON file',
+    run: runCheckSteps
+  },
   kyselyMigrationCommand,
-  tableSpecCommand
+  {
+    name: 'table-spec',
+    summary: 'Generate a Markdown table specification document',
+    run: runTableSpecSteps
+  }
 ]
 
-const usage = [
+const USAGE = [
   'Usage:',
   '  shot check <file>',
   '  shot kysely-migration <file> --output <file>',
@@ -36,11 +45,11 @@ const usage = [
   '  -v, --version  Show version'
 ].join('\n')
 
-async function main(argv = process.argv.slice(2)) {
+export async function main(argv = process.argv.slice(2)) {
   try {
     return await runMain(argv)
   } catch (error) {
-    writeOptionError((error as Error).message)
+    logger.error(`Error: ${(error as Error).message}\n\n${USAGE}`)
     return 1
   }
 }
@@ -48,18 +57,18 @@ async function main(argv = process.argv.slice(2)) {
 async function runMain(argv: string[]) {
   const [subcommand, ...args] = argv
   if (subcommand === '--help' || subcommand === '-h') {
-    writeSync(1, `${usage}\n`)
+    logger.info(USAGE)
     return 0
   }
   if (subcommand === '--version' || subcommand === '-v') {
-    writeSync(1, `${packageJson.version}\n`)
+    logger.info(PACKAGE_JSON.version)
     return 0
   }
   if (subcommand === undefined) {
     throw new Error('missing subcommand')
   }
 
-  const command = commands.find(command => command.name === subcommand)
+  const command = COMMANDS.find(command => command.name === subcommand)
   if (command === undefined) {
     throw new Error(`unknown subcommand "${subcommand}"`)
   }
@@ -72,9 +81,10 @@ async function runMain(argv: string[]) {
   }
 }
 
-function writeOptionError(reason: string) {
-  writeSync(2, `Error: ${reason}\n\n${usage}\n`)
+/* c8 ignore next 6 */
+if (
+  process.argv[1] !== undefined &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
+  process.exitCode = await main()
 }
-
-const exitCode = await main()
-process.exitCode = exitCode

@@ -4,22 +4,20 @@ This document records implementation choices for the behavior specified in `shot
 
 ## Progress Output Implementation
 
-`check` uses `@clack/prompts` for TUI-style progress output:
+`check` uses the shared pino logger for progress output:
 
-- `intro('Data Sketch validation')` is written before file processing starts.
-- `log.success('Data Sketch read')` is written after a successful read and parse.
-- `log.success('Validating Data Sketch')` is written after successful Data Sketch validation.
-- `log.success('Data Sketch is valid')` is written after validation succeeds.
-- `log.error()` is used for failed read, parse, or validation steps.
-- `log.warn()` is used for warning steps if a warning is introduced.
-- `outro(green('Succeeded'))` is written on success.
-- `outro(red('Failed'))` is written after command failures.
+- `Data Sketch validation` is logged before file processing starts.
+- `Data Sketch read` is logged after a successful read and parse.
+- `Validating Data Sketch` is logged after successful Data Sketch validation.
+- `Data Sketch is valid` is logged after validation succeeds.
+- Error logs are used for failed read, parse, or validation steps.
+- Warning logs are used for warning steps if a warning is introduced.
 
-The implementation does not use `spinner()`, `log.step()`, `note()`, or a `Reason` box. Failure reasons and validation issues are written as plain text.
+The implementation does not use a spinner, step UI, note UI, or a `Reason` box. Failure reasons and validation issues are logged as plain text.
 
 ## Error Stream Handling
 
-Argument parsing and argument validation errors do not use clack. They are written directly to standard error in this format:
+Argument parsing and argument validation errors are logged in this format:
 
 ```text
 Error: <reason>
@@ -28,16 +26,16 @@ Usage:
 ...
 ```
 
-Read, parse, and Data Sketch validation failures are written to standard output because they are part of the TUI-mode command execution.
+Read, parse, and Data Sketch validation failures are logged through pino.
 
 ## Validation Flow
 
 The command parses arguments with Node.js `parseArgs`.
 
-When help is requested, it writes usage to standard output and returns `0` before any file work.
+When help is requested, it logs usage and returns `0` before any file work.
 
 When one file argument is provided, the command reads and parses the file through `parseSpecificationFile`, then validates the parsed value with `validateSpecification`. The input file path is passed as `sourcePath` so trace source paths such as `sources.openapi` can resolve relative to the Data Sketch.
 
-If validation fails, `result.issues.map(issue => issue.message)` is joined with newlines and written to standard output.
+If validation fails, `result.issues.map(issue => issue.message)` is joined with newlines and logged.
 
-The outro message is colored with `picocolors.createColors(true)` so `Succeeded` and `Failed` remain colored even when the surrounding environment disables color for other output.
+The default CLI logger uses `pino-pretty` with color enabled.

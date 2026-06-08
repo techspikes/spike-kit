@@ -1,29 +1,31 @@
-import { parseSpecificationText } from '../../core/parser.ts'
+import { parseSpecification } from '../../core/parser.ts'
+import type { ValidationIssue } from '../../core/validator.ts'
 import { validateSpecification } from '../../core/validator.ts'
 
-type CheckEvent = { type: 'parsed' } | { type: 'validated' }
-
-type CheckDataSketchOptions = {
-  sourceName?: string
-  loadOpenApiSource?: (source: string) => Promise<string>
-  onEvent?: (event: CheckEvent) => void
+export type ShotInput = {
+  spec: string
+  sources?: {
+    openapi: (source: string) => Promise<string>
+  }
 }
 
-export async function checkDataSketch(
-  source: string,
-  options: CheckDataSketchOptions = {}
-): Promise<string> {
-  const input = parseSpecificationText(source, options.sourceName ?? '<input>')
-  options.onEvent?.({ type: 'parsed' })
+export type ShotOutput =
+  | {
+      isValid: true
+    }
+  | {
+      isValid: false
+      issues: ValidationIssue[]
+    }
 
-  const result = await validateSpecification(input, {
-    loadOpenApiSource: options.loadOpenApiSource
+export async function shot(input: ShotInput): Promise<ShotOutput> {
+  const result = await validateSpecification(parseSpecification(input.spec), {
+    loadOpenApiSource: input.sources?.openapi
   })
 
-  if (!result.success) {
-    return result.issues.map(issue => issue.message).join('\n')
+  if (!result.isValid) {
+    return { isValid: false, issues: result.issues }
   }
 
-  options.onEvent?.({ type: 'validated' })
-  return ''
+  return { isValid: true }
 }

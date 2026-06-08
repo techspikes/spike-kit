@@ -8,28 +8,25 @@ The package exposes only the CLI entrypoint. It does not provide a public render
 library API.
 
 Within the source tree, `src/commands/table-spec/index.ts` exports the CLI
-command object. `src/commands/table-spec/lib.ts` exports
-`generateTableSpecDocument(...)` and the low-level
-`renderTableSpecDocument(...)` helper used by focused document rendering tests.
+`runSteps(...)` function. `src/commands/table-spec/lib.ts` exports the
+low-level `shot(...)` helper used by focused document rendering tests.
 
 ## Progress Output Implementation
 
-`shot table-spec --output` and `shot table-spec -o` use `@clack/prompts` for TUI-style progress output:
+`shot table-spec --output` and `shot table-spec -o` use the shared pino logger for progress output:
 
-- `intro('Table specification generation')` is written before file processing starts.
-- `log.success()` is used for successful file reads and writes.
-- `log.success()` is used for successful validation and rendering steps.
-- `log.warn()` is used for warning steps if a warning is introduced.
-- `log.success('Table specification generated')` is written after a successful file write.
-- `log.error()` is used for failed processing steps.
-- `outro(green('Succeeded'))` is written on success.
-- `outro(red('Failed'))` is written after file-output mode failures.
+- `Table specification generation` is logged before file processing starts.
+- Info logs are used for successful file reads and writes.
+- Info logs are used for successful validation and rendering steps.
+- Warning logs are used for warning steps if a warning is introduced.
+- `Table specification generated` is logged after a successful file write.
+- Error logs are used for failed processing steps.
 
-The implementation does not use `note()` or a `Reason` box. Failure reasons and validation issues are written as plain text.
+The implementation does not use a note UI or a `Reason` box. Failure reasons and validation issues are logged as plain text.
 
 ## Error Stream Handling
 
-Argument parsing and argument validation errors do not use clack. They are written directly to standard error in this format:
+Argument parsing and argument validation errors are logged in this format:
 
 ```text
 Error: <reason>

@@ -1,37 +1,50 @@
 import { createHash } from 'node:crypto'
-import { writeSync } from 'node:fs'
 import { readFile, writeFile } from 'node:fs/promises'
 import { basename, dirname, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
-import { intro, log, outro } from '@clack/prompts'
-import pc from 'picocolors'
-import { generateTableSpecDocument, TableSpecValidationError } from './lib.ts'
+import { logger } from '../../core/logger.ts'
+import { shot } from './lib.ts'
 
-const colors = pc.createColors(true)
+type ParsedArgs =
+  | {
+      isHelp: true
+    }
+  | {
+      isHelp: false
+      path: string
+      outputPath: string
+    }
 
-const usage = [
-  'Usage:',
-  '  shot table-spec <file> --output <file>',
-  '  shot table-spec <file> -o <file>',
-  '',
-  'Generate a Markdown table specification document.',
-  '',
-  'Options:',
-  '  -o, --output <file>  Write the document to a file',
-  '  -h, --help           Show this help'
-].join('\n')
+export async function runSteps(args: string[]) {
+  const options = stepParseArgs(args)
 
-export const command = {
-  name: 'table-spec',
-  summary: 'Generate a Markdown table specification document',
-  usage,
-  run: runTableSpecCommand
+  if (options.isHelp) return
+
+  logger.info('Table specification generation')
+
+  const spec = await stepReadSpec(options.path)
+  const tableSpec = await stepCreateTableSpec(options.path, spec)
+  await stepWriteOutput(options.outputPath, tableSpec)
+
+  logger.info('Table specification generated')
 }
 
-async function runTableSpecCommand(args: string[]) {
-  let parsed: ReturnType<typeof parseArgs>
+function stepParseArgs(args: string[]): ParsedArgs {
+  const usage = () =>
+    [
+      'Usage:',
+      '  shot table-spec <file> --output <file>',
+      '  shot table-spec <file> -o <file>',
+      '',
+      'Generate a Markdown table specification document.',
+      '',
+      'Options:',
+      '  -o, --output <file>  Write the document to a file',
+      '  -h, --help           Show this help'
+    ].join('\n')
+
   try {
-    parsed = parseArgs({
+    const parsed = parseArgs({
       args,
       allowPositionals: true,
       strict: true,
@@ -40,122 +53,83 @@ async function runTableSpecCommand(args: string[]) {
         help: { type: 'boolean', short: 'h' }
       }
     })
+
+    if (parsed.values.help === true) {
+      logger.info(usage())
+      return { isHelp: true }
+    }
+
+    if (
+      parsed.positionals.length !== 1 ||
+      parsed.positionals[0] === undefined ||
+      parsed.values.output === undefined
+    ) {
+      throw new Error('expected one input file and --output <file>')
+    }
+
+    return {
+      isHelp: false,
+      path: parsed.positionals[0],
+      outputPath: parsed.values.output
+    }
   } catch (error) {
-    writeOptionError((error as Error).message)
+    logger.error(`Error: ${(error as Error).message}\n\n${usage()}`)
     throw new Error((error as Error).message)
   }
-  if (parsed.values.help === true) {
-    writeSync(1, `${usage}\n`)
-    return
-  }
-  if (parsed.positionals.length !== 1 || parsed.values.output === undefined) {
-    writeOptionError('expected one input file and --output <file>')
-    throw new Error('expected one input file and --output <file>')
-  }
-  const filePath = parsed.positionals[0]
-  const outputPath = parsed.values.output as string
+}
 
-  intro('Table specification generation')
-
-  let source: Buffer
+async function stepReadSpec(path: string) {
   try {
-    source = await readFile(filePath)
-    log.success('Data Sketch read')
+    const spec = await readFile(path, 'utf-8')
+    logger.info('Data Sketch read')
+    return spec
   } catch (error) {
-    log.error('Reading Data Sketch failed')
-    writeReason((error as Error).message)
-    outro(colors.red('Failed'))
-    await flushStdout()
+    logger.error('Reading Data Sketch failed')
+    logger.error((error as Error).message)
     throw new Error((error as Error).message)
   }
+}
 
-  const sourceSha256 = createHash('sha256').update(source).digest('hex')
-  let errorStep = 'Parsing Data Sketch'
-  const handleEvent = (event: {
-    type: 'parsed' | 'validated' | 'rendered'
-  }) => {
-    if (event.type === 'parsed') {
-      errorStep = 'Validating Data Sketch'
-    }
-    if (event.type === 'validated') {
-      log.success('Validating Data Sketch')
-      errorStep = 'Rendering table specification'
-    }
-    if (event.type === 'rendered') {
-      log.success('Rendering table specification')
-    }
-  }
+async function stepCreateTableSpec(path: string, spec: string) {
+  const sourceSha256 = createHash('sha256').update(spec).digest('hex')
+  let errorStep = 'Validating Data Sketch'
 
-  let document: string
   try {
-    document = await generateTableSpecDocument(source.toString('utf8'), {
+    const result = await shot({
+      spec,
+      sources: {
+        openapi: (source: string) =>
+          readFile(resolve(dirname(path), source), 'utf8')
+      },
       metadata: {
-        source: basename(filePath),
+        source: basename(path),
         sourceSha256,
         generatedAt: new Date().toISOString()
-      },
-      sourceName: filePath,
-      loadOpenApiSource: source =>
-        readFile(resolve(dirname(filePath), source), 'utf8'),
-      onEvent: handleEvent
+      }
     })
+    logger.info('Validating Data Sketch')
+    errorStep = 'Rendering table specification'
+    logger.info('Rendering table specification')
+    return result.tableSpec
   } catch (error) {
-    if (error instanceof TableSpecValidationError) {
-      await reportTableSpecValidationIssues(
-        'Validating Data Sketch',
-        error.issues.map(issue => issue.message)
-      )
-      throw new Error(error.message)
+    if ((error as Error).name === 'TableSpecValidationError') {
+      logger.error('Validating Data Sketch failed')
+      logger.error((error as Error).message)
+      throw new Error((error as Error).message)
     }
-    await reportTableSpecError(errorStep, error)
+    logger.error(`${errorStep} failed`)
+    logger.error((error as Error).message)
     throw new Error((error as Error).message)
   }
+}
 
+async function stepWriteOutput(outputPath: string, tableSpec: string) {
   try {
-    await writeFile(outputPath, document)
-    log.success('Table specification written')
+    await writeFile(outputPath, tableSpec)
+    logger.info('Table specification written')
   } catch (error) {
-    log.error('Writing table specification failed')
-    writeReason((error as Error).message)
-    outro(colors.red('Failed'))
-    await flushStdout()
+    logger.error('Writing table specification failed')
+    logger.error((error as Error).message)
     throw new Error((error as Error).message)
   }
-
-  log.success('Table specification generated')
-  outro(colors.green('Succeeded'))
-  await flushStdout()
-}
-
-function flushStdout() {
-  return new Promise<void>(resolve => process.stdout.write('', () => resolve()))
-}
-
-function writeOptionError(reason: string) {
-  writeSync(2, `Error: ${reason}\n\n${usage}\n`)
-}
-
-async function reportTableSpecError(step: string, error: unknown) {
-  log.error(`${step} failed`)
-  writeReason((error as Error).message)
-  outro(colors.red('Failed'))
-  await flushStdout()
-}
-
-async function reportTableSpecValidationIssues(
-  step: string,
-  messages: string[]
-) {
-  log.error(`${step} failed`)
-  writeValidationIssues(messages)
-  outro(colors.red('Failed'))
-  await flushStdout()
-}
-
-function writeValidationIssues(messages: string[]) {
-  process.stdout.write(`${messages.join('\n')}\n`)
-}
-
-function writeReason(reason: string) {
-  process.stdout.write(`${reason}\n`)
 }

@@ -13,7 +13,7 @@
       "!.tmp",
       "!dist",
       "!coverage",
-      "!test/fixtures/kysely-migration/expected/*.ts"
+      "!test/commands/kysely-migration/fixtures/expected/*.ts"
     ]
   },
   "formatter": {

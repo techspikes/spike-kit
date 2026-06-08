@@ -1,19 +1,10 @@
-import { writeSync } from 'node:fs'
 import { readFile, writeFile } from 'node:fs/promises'
-import { dirname, resolve } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
-import { intro, log, outro } from '@clack/prompts'
-import pc from 'picocolors'
-import {
-  generateKyselyDatabaseTypes,
-  generateKyselyMigration,
-  KyselyMigrationValidationError,
-  resolveMigrationOutputPath
-} from './lib.ts'
+import { logger } from '../../core/logger.ts'
+import { shot } from './lib.ts'
 
-const colors = pc.createColors(true)
-
-const usage = [
+const USAGE = [
   'Usage:',
   '  shot kysely-migration <file> --output <file>',
   '  shot kysely-migration <file> -o <file>',
@@ -39,14 +30,46 @@ const usage = [
 export const command = {
   name: 'kysely-migration',
   summary: 'Generate a Kysely TypeScript initial or diff migration',
-  usage,
-  run: runKyselyMigrationCommand
+  usage: USAGE,
+  run: runCommand
 }
 
-async function runKyselyMigrationCommand(args: string[]) {
-  let parsed: ReturnType<typeof parseArgs>
+type CommandOptions = {
+  filePath: string
+  outputPath: string
+  previousMigrationPath?: string
+  typesOutputPath?: string
+  isoPrefix: boolean
+  includeTentative: boolean
+  dryRun: boolean
+}
+
+async function runCommand(args: string[]) {
+  const parsed = stepParseArgs(args)
+  if (stepShowHelp(parsed)) return
+
+  const options = stepResolveOptions(parsed)
+  logger.info('Migration generation')
+
+  const source = await stepReadSource(options.filePath)
+  const previousMigrationSource = await stepReadPreviousMigration(options)
+  const output = await stepCreateKyselyMigration(
+    options,
+    source,
+    previousMigrationSource
+  )
+  if (options.dryRun) {
+    logger.info('Dry run completed')
+    return
+  }
+  await stepWriteOutput(options, output)
+
+  logger.info('Migration generated')
+}
+
+function stepParseArgs(args: string[]) {
   try {
-    parsed = parseArgs({
+    return parseArgs({
       args,
       allowPositionals: true,
       strict: true,
@@ -61,15 +84,26 @@ async function runKyselyMigrationCommand(args: string[]) {
       }
     })
   } catch (error) {
-    writeOptionError((error as Error).message)
+    logger.error(`Error: ${(error as Error).message}\n\n${USAGE}`)
     throw new Error((error as Error).message)
   }
+}
+
+function stepShowHelp(parsed: ReturnType<typeof parseArgs>) {
   if (parsed.values.help === true) {
-    writeSync(1, `${usage}\n`)
-    return
+    logger.info(USAGE)
+    return true
   }
+  return false
+}
+
+function stepResolveOptions(
+  parsed: ReturnType<typeof parseArgs>
+): CommandOptions {
   if (parsed.positionals.length !== 1 || parsed.values.output === undefined) {
-    writeOptionError('expected one input file and --output <file>')
+    logger.error(
+      `Error: expected one input file and --output <file>\n\n${USAGE}`
+    )
     throw new Error('expected one input file and --output <file>')
   }
   const filePath = parsed.positionals[0]
@@ -79,152 +113,145 @@ async function runKyselyMigrationCommand(args: string[]) {
     | undefined
   const typesOutputPath = parsed.values['types-output'] as string | undefined
   if (typesOutputPath !== undefined && !typesOutputPath.endsWith('.d.ts')) {
-    writeOptionError('--types-output must end with .d.ts')
+    logger.error(`Error: --types-output must end with .d.ts\n\n${USAGE}`)
     throw new Error('--types-output must end with .d.ts')
   }
   const isoPrefix = parsed.values['iso-prefix'] === true
   const includeTentative = parsed.values['include-tentative'] === true
   const dryRun = parsed.values['dry-run'] === true
 
-  intro('Migration generation')
+  return {
+    filePath,
+    outputPath,
+    previousMigrationPath,
+    typesOutputPath,
+    isoPrefix,
+    includeTentative,
+    dryRun
+  }
+}
 
-  let source: Buffer
+async function stepReadSource(filePath: string) {
   try {
-    source = await readFile(filePath)
-    log.success('Data Sketch read')
+    const source = await readFile(filePath)
+    logger.info('Data Sketch read')
+    return source
   } catch (error) {
-    await reportMigrationError('Reading Data Sketch', error)
+    logger.error('Reading Data Sketch failed')
+    logger.error((error as Error).message)
     throw new Error((error as Error).message)
   }
+}
 
-  let previousMigrationSource: string | undefined
-  if (previousMigrationPath !== undefined) {
-    try {
-      previousMigrationSource = await readFile(previousMigrationPath, 'utf8')
-      log.success('Previous migration read')
-    } catch (error) {
-      await reportMigrationError('Reading previous migration', error)
-      throw new Error((error as Error).message)
-    }
+async function stepReadPreviousMigration(options: CommandOptions) {
+  if (options.previousMigrationPath === undefined) return undefined
+  try {
+    const previousMigrationSource = await readFile(
+      options.previousMigrationPath,
+      'utf8'
+    )
+    logger.info('Previous migration read')
+    return previousMigrationSource
+  } catch (error) {
+    logger.error('Reading previous migration failed')
+    logger.error((error as Error).message)
+    throw new Error((error as Error).message)
   }
+}
 
-  let errorStep = 'Parsing Data Sketch'
-  const loadOpenApiSource = (source: string) =>
+function stepLoadOpenApiSource(filePath: string) {
+  return (source: string) =>
     readFile(resolve(dirname(filePath), source), 'utf8')
-  const handleEvent = (
-    event:
-      | {
-          type:
-            | 'parsed'
-            | 'validated'
-            | 'projected'
-            | 'previousSnapshotParsed'
-            | 'rendered'
-        }
-      | { type: 'warning'; message: string }
-  ) => {
-    if (event.type === 'parsed') {
-      errorStep = 'Validating Data Sketch'
-    }
-    if (event.type === 'validated') {
-      log.success('Validating Data Sketch')
-      errorStep = 'Creating DB projection snapshot'
-    }
-    if (event.type === 'projected') {
-      log.success('Creating DB projection snapshot')
-      errorStep =
-        previousMigrationSource === undefined
-          ? 'Rendering migration'
-          : 'Parsing previous DB projection snapshot'
-    }
-    if (event.type === 'previousSnapshotParsed') {
-      log.success('Previous DB projection snapshot parsed')
-      errorStep = 'Rendering migration'
-    }
-    if (event.type === 'warning') {
-      log.warn(event.message)
-    }
-    if (event.type === 'rendered') {
-      log.success('Rendering migration')
-    }
-  }
+}
 
-  let migrationSource: string
+async function stepCreateKyselyMigration(
+  options: CommandOptions,
+  source: Buffer,
+  previousMigrationSource: string | undefined
+) {
+  let errorStep = 'Parsing Data Sketch'
   const generatedAt = new Date().toISOString()
   try {
-    migrationSource = await generateKyselyMigration({
+    const result = await shot({
       source: source.toString('utf8'),
-      sourceName: filePath,
+      sourceName: options.filePath,
       previousMigrationSource,
-      includeTentative,
+      includeTentative: options.includeTentative,
       generatedAt,
-      loadOpenApiSource,
-      onEvent: handleEvent
+      renderMode:
+        options.typesOutputPath === undefined
+          ? 'migration'
+          : 'migrationAndDatabaseTypes',
+      sources: {
+        openapi: stepLoadOpenApiSource(options.filePath)
+      }
     })
-  } catch (error) {
-    if (error instanceof KyselyMigrationValidationError) {
-      log.error('Validating Data Sketch failed')
-      writeReason(error.issues.map(issue => issue.message).join('\n'))
-      outro(colors.red('Failed'))
-      await flushStdout()
-      throw new Error(error.message)
+    logger.info('Validating Data Sketch')
+    if (result.previousSnapshot !== undefined) {
+      logger.info('Previous DB projection snapshot parsed')
     }
-    await reportMigrationError(errorStep, error)
+    logger.info('Creating DB projection snapshot')
+    for (const warning of result.warnings) {
+      logger.warn(warning.message)
+    }
+    errorStep = 'Rendering migration'
+    logger.info('Rendering migration')
+
+    /* c8 ignore next 3 */
+    if (result.migrationSource === undefined) {
+      throw new Error('Migration render output is missing')
+    }
+    return {
+      migrationSource: result.migrationSource,
+      databaseTypesSource: result.databaseTypesSource
+    }
+  } catch (error) {
+    if ((error as Error).name === 'KyselyMigrationValidationError') {
+      logger.error('Validating Data Sketch failed')
+      logger.error((error as Error).message)
+      throw new Error((error as Error).message)
+    }
+    logger.error(`${errorStep} failed`)
+    logger.error((error as Error).message)
     throw new Error((error as Error).message)
   }
+}
 
-  if (dryRun) {
-    log.success('Dry run completed')
-    outro(colors.green('Succeeded'))
-    await flushStdout()
-    return
-  }
-
+async function stepWriteOutput(
+  options: CommandOptions,
+  output: { migrationSource: string; databaseTypesSource?: string }
+) {
   const finalOutputPath = resolveMigrationOutputPath(
-    outputPath,
-    isoPrefix,
+    options.outputPath,
+    options.isoPrefix,
     new Date()
   )
-
   try {
-    await writeFile(finalOutputPath, migrationSource)
-    log.success('Migration written')
-    if (typesOutputPath !== undefined) {
-      const databaseTypesSource = await generateKyselyDatabaseTypes({
-        source: source.toString('utf8'),
-        sourceName: filePath,
-        includeTentative,
-        generatedAt,
-        loadOpenApiSource
-      })
-      await writeFile(typesOutputPath, databaseTypesSource)
-      log.success('Type definitions written')
+    await writeFile(finalOutputPath, output.migrationSource)
+    logger.info('Migration written')
+    if (options.typesOutputPath !== undefined) {
+      /* c8 ignore next 3 */
+      if (output.databaseTypesSource === undefined) {
+        throw new Error('Database types render output is missing')
+      }
+      await writeFile(options.typesOutputPath, output.databaseTypesSource)
+      logger.info('Type definitions written')
     }
   } catch (error) {
-    await reportMigrationError('Writing migration', error)
+    logger.error('Writing migration failed')
+    logger.error((error as Error).message)
     throw new Error((error as Error).message)
   }
-
-  log.success('Migration generated')
-  outro(colors.green('Succeeded'))
-  await flushStdout()
 }
 
-function flushStdout() {
-  return new Promise<void>(resolve => process.stdout.write('', () => resolve()))
-}
-
-function writeOptionError(reason: string) {
-  writeSync(2, `Error: ${reason}\n\n${usage}\n`)
-}
-
-async function reportMigrationError(step: string, error: unknown) {
-  log.error(`${step} failed`)
-  writeReason((error as Error).message)
-  outro(colors.red('Failed'))
-  await flushStdout()
-}
-
-function writeReason(reason: string) {
-  process.stdout.write(`${reason}\n`)
+function resolveMigrationOutputPath(
+  outputPath: string,
+  isoPrefix: boolean,
+  date: Date
+) {
+  if (!isoPrefix) return outputPath
+  return join(
+    dirname(outputPath),
+    `${date.toISOString()}_${basename(outputPath)}`
+  )
 }

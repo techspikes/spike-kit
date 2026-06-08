@@ -15,32 +15,32 @@ import type {
 import { frontmatterToMarkdown } from 'mdast-util-frontmatter'
 import { gfmTableToMarkdown } from 'mdast-util-gfm-table'
 import { toMarkdown } from 'mdast-util-to-markdown'
-import { parseSpecificationText } from '../../core/parser.ts'
+import { parseSpecification } from '../../core/parser.ts'
 import type { IndexField, Specification, Store } from '../../core/spec.ts'
 import {
   type ValidationIssue,
   validateSpecification
 } from '../../core/validator.ts'
 
-export type TableSpecDocumentMetadata = {
+type ShotInput = {
+  spec: string
+  sources?: {
+    openapi: (source: string) => Promise<string>
+  }
+  metadata: TableSpecMetadata
+}
+
+type ShotOutput = {
+  tableSpec: string
+}
+
+type TableSpecMetadata = {
   source: string
   sourceSha256: string
   generatedAt: string
 }
 
-type TableSpecEvent =
-  | { type: 'parsed' }
-  | { type: 'validated' }
-  | { type: 'rendered' }
-
-type GenerateTableSpecDocumentOptions = {
-  metadata: TableSpecDocumentMetadata
-  sourceName?: string
-  loadOpenApiSource?: (source: string) => Promise<string>
-  onEvent?: (event: TableSpecEvent) => void
-}
-
-export class TableSpecValidationError extends Error {
+class TableSpecValidationError extends Error {
   readonly issues: ValidationIssue[]
 
   constructor(issues: ValidationIssue[]) {
@@ -50,33 +50,22 @@ export class TableSpecValidationError extends Error {
   }
 }
 
-export async function generateTableSpecDocument(
-  source: string,
-  options: GenerateTableSpecDocumentOptions
-): Promise<string> {
-  const input = parseSpecificationText(source, options.sourceName ?? '<input>')
-  options.onEvent?.({ type: 'parsed' })
-
-  const result = await validateSpecification(input, {
-    loadOpenApiSource: options.loadOpenApiSource
+export async function shot(input: ShotInput): Promise<ShotOutput> {
+  const result = await validateSpecification(parseSpecification(input.spec), {
+    loadOpenApiSource: input.sources?.openapi
   })
 
-  if (!result.success) {
+  if (!result.isValid) {
     throw new TableSpecValidationError(result.issues)
   }
-  options.onEvent?.({ type: 'validated' })
 
-  const document = renderTableSpecDocument(result.data, options.metadata)
-  options.onEvent?.({ type: 'rendered' })
-
-  return document
+  return {
+    tableSpec: renderTableSpec(result.data, input.metadata)
+  }
 }
 
-export function renderTableSpecDocument(
-  dsl: Specification,
-  metadata: TableSpecDocumentMetadata
-) {
-  return toMarkdown(createTableSpecDocumentTree(dsl, metadata), {
+function renderTableSpec(spec: Specification, metadata: TableSpecMetadata) {
+  return toMarkdown(createTableSpecDocumentTree(spec, metadata), {
     extensions: [
       frontmatterToMarkdown(['yaml']),
       gfmTableToMarkdown({ tablePipeAlign: true })
@@ -85,22 +74,22 @@ export function renderTableSpecDocument(
 }
 
 function createTableSpecDocumentTree(
-  dsl: Specification,
-  metadata: TableSpecDocumentMetadata
+  spec: Specification,
+  metadata: TableSpecMetadata
 ): Root {
   const children: RootContent[] = [
     createFrontMatter(metadata),
-    heading(1, dsl.info.name)
+    heading(1, spec.info.name)
   ]
 
-  for (const store of Object.values(dsl.stores)) {
-    children.push(...createStoreNodes(store, dsl))
+  for (const store of Object.values(spec.stores)) {
+    children.push(...createStoreNodes(store, spec))
   }
 
   return { type: 'root', children }
 }
 
-function createFrontMatter(metadata: TableSpecDocumentMetadata): Yaml {
+function createFrontMatter(metadata: TableSpecMetadata): Yaml {
   const source = dump(
     { source: metadata.source },
     { lineWidth: -1, noRefs: true }
@@ -128,7 +117,29 @@ function createStoreNodes(store: Store, dsl: Specification): RootContent[] {
     )
   }
 
-  nodes.push(paragraph([text(store.reason)]), createFieldsTable(store))
+  nodes.push(
+    paragraph([text(store.reason)]),
+    createTable(
+      [
+        'Column',
+        'Data Type',
+        'Nullable',
+        'Default',
+        'Format',
+        'Check Values',
+        'Description'
+      ],
+      Object.values(store.fields).map(field => [
+        field.name,
+        renderType(field.type),
+        field.nullable ? 'yes' : 'no',
+        Object.hasOwn(field, 'default') ? String(field.default) : '',
+        field.format ?? '',
+        field.enum?.join(', ') ?? '',
+        field.aliases?.join(', ') ?? ''
+      ])
+    )
+  )
 
   if (store.keys?.primary !== undefined) {
     nodes.push(
@@ -200,29 +211,6 @@ function createStoreNodes(store: Store, dsl: Specification): RootContent[] {
   }
 
   return nodes
-}
-
-function createFieldsTable(store: Store) {
-  return createTable(
-    [
-      'Column',
-      'Data Type',
-      'Nullable',
-      'Default',
-      'Format',
-      'Check Values',
-      'Description'
-    ],
-    Object.values(store.fields).map(field => [
-      field.name,
-      renderType(field.type),
-      field.nullable ? 'yes' : 'no',
-      Object.hasOwn(field, 'default') ? String(field.default) : '',
-      field.format ?? '',
-      field.enum?.join(', ') ?? '',
-      field.aliases?.join(', ') ?? ''
-    ])
-  )
 }
 
 function renderType(fieldType: Store['fields'][string]['type']) {

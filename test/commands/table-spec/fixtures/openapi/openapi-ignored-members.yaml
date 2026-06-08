@@ -1,0 +1,26 @@
+openapi: 3.0.3
+
+info:
+  title: Online Shop API
+  version: 1.0.0
+
+paths:
+  /customers:
+    parameters: []
+    post:
+      operationId: createCustomer
+      responses:
+        '201':
+          description: Customer created
+
+  /ignored-null-path:
+
+  /ignored-null-operation:
+    get:
+
+  /ignored-non-string-operation-id:
+    post:
+      operationId: 123
+      responses:
+        '200':
+          description: Ignored

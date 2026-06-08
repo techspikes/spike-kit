@@ -1,5 +1,3 @@
-import { readFile } from 'node:fs/promises'
-import { dirname, resolve } from 'node:path'
 import { load, type YAMLException } from 'js-yaml'
 import type { z } from 'zod'
 import { type IndexField, specificationSchema } from './spec.ts'
@@ -11,17 +9,15 @@ export type ValidationIssue = {
 
 export type ValidationResult =
   | {
-      success: true
+      isValid: true
       data: z.infer<typeof specificationSchema>
-      issues: []
     }
   | {
-      success: false
+      isValid: false
       issues: ValidationIssue[]
     }
 
 export type ValidationOptions = {
-  sourcePath?: string
   loadOpenApiSource?: (source: string) => Promise<string>
 }
 
@@ -161,20 +157,19 @@ export async function validateSpecification(
     const traceIssues = await validateOpenApiTrace(result.data, options)
     if (traceIssues.length > 0) {
       return {
-        success: false,
+        isValid: false,
         issues: traceIssues
       }
     }
 
     return {
-      success: true,
-      data: result.data,
-      issues: []
+      isValid: true,
+      data: result.data
     }
   }
 
   return {
-    success: false,
+    isValid: false,
     issues: result.error.issues.map(issue => ({
       path: issue.path.map(segment => String(segment)),
       message: formatIssue(issue)
@@ -188,13 +183,18 @@ async function validateOpenApiTrace(
 ): Promise<ValidationIssue[]> {
   const openApiSource = dsl.sources?.openapi
   if (openApiSource === undefined) return []
+  if (options.loadOpenApiSource === undefined) {
+    return [
+      {
+        path: ['sources', 'openapi'],
+        message: `OpenAPI source loader is required for ${openApiSource}`
+      }
+    ]
+  }
 
   let source: string
   try {
-    source =
-      options.loadOpenApiSource === undefined
-        ? await readOpenApiSource(openApiSource, options)
-        : await options.loadOpenApiSource(openApiSource)
+    source = await options.loadOpenApiSource(openApiSource)
   } catch (error) {
     return [
       {
@@ -234,18 +234,6 @@ async function validateOpenApiTrace(
   }
 
   return issues
-}
-
-async function readOpenApiSource(
-  openApiSource: string,
-  options: ValidationOptions
-) {
-  const openApiPath =
-    options.sourcePath === undefined
-      ? openApiSource
-      : resolve(dirname(options.sourcePath), openApiSource)
-
-  return readFile(openApiPath, 'utf8')
 }
 
 type OpenApiOperationIds = {

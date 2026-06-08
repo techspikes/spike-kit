@@ -1,7 +1,6 @@
-import { basename, dirname, join } from 'node:path'
 import { gunzipSync, gzipSync } from 'node:zlib'
 import { load } from 'js-yaml'
-import { parseSpecificationText } from '../../core/parser.ts'
+import { parseSpecification } from '../../core/parser.ts'
 import {
   createDbProjectionSnapshot,
   type DbProjectionSnapshot,
@@ -20,38 +19,47 @@ import {
   validateSpecification
 } from '../../core/validator.ts'
 
-export { createDbProjectionSnapshot }
-
-const embeddedSnapshotIdentifier = 'data-sketch/embedded-db-projection-snapshot'
-const snapshotLineLength = 76
+const EMBEDDED_SNAPSHOT_IDENTIFIER =
+  'data-sketch/embedded-db-projection-snapshot'
+const SNAPSHOT_LINE_LENGTH = 76
 
 type MigrationWarning = {
   message: string
 }
 
 type MigrationRenderOptions = {
-  generatedAt?: string
+  generatedAt: string
 }
 
-type KyselyMigrationEvent =
-  | { type: 'parsed' }
-  | { type: 'validated' }
-  | { type: 'projected' }
-  | { type: 'previousSnapshotParsed' }
-  | { type: 'warning'; message: string }
-  | { type: 'rendered' }
+type RenderMode = 'migration' | 'databaseTypes' | 'migrationAndDatabaseTypes'
 
-type GenerateKyselyMigrationInput = {
+type ShotInput<TOptions extends object = object> = {
   source: string
   sourceName?: string
+  sources?: {
+    openapi?: (source: string) => Promise<string>
+  }
+} & TOptions
+
+type KyselyMigrationShotOptions = {
   previousMigrationSource?: string
   includeTentative: boolean
   generatedAt: string
-  loadOpenApiSource?: (source: string) => Promise<string>
-  onEvent?: (event: KyselyMigrationEvent) => void
+  renderMode?: RenderMode
 }
 
-export class KyselyMigrationValidationError extends Error {
+type ShotOutput<TResult extends object> = TResult
+
+type KyselyMigrationShotOutput = ShotOutput<{
+  spec: Specification
+  previousSnapshot?: DbProjectionSnapshot
+  snapshot: DbProjectionSnapshot
+  warnings: MigrationWarning[]
+  migrationSource?: string
+  databaseTypesSource?: string
+}>
+
+class KyselyMigrationValidationError extends Error {
   readonly issues: ValidationIssue[]
 
   constructor(issues: ValidationIssue[]) {
@@ -61,95 +69,88 @@ export class KyselyMigrationValidationError extends Error {
   }
 }
 
-export async function generateKyselyMigration(
-  input: GenerateKyselyMigrationInput
-): Promise<string> {
+export async function shot<
+  TResult extends KyselyMigrationShotOutput = KyselyMigrationShotOutput,
+  TOptions extends KyselyMigrationShotOptions = KyselyMigrationShotOptions
+>(input: ShotInput<TOptions>): Promise<TResult> {
   const prepared = await prepareKyselyMigration(input)
+  const renderMode = input.renderMode ?? 'migration'
+  const output: {
+    migrationSource?: string
+    databaseTypesSource?: string
+  } = {}
 
-  const migrationSource =
-    prepared.previousSnapshot === undefined
-      ? renderMigrationSource(prepared.snapshot, {
-          generatedAt: input.generatedAt
-        })
-      : renderDiffMigrationSource(
-          prepared.previousSnapshot,
-          prepared.snapshot,
-          {
+  if (
+    renderMode === 'migration' ||
+    renderMode === 'migrationAndDatabaseTypes'
+  ) {
+    output.migrationSource =
+      prepared.previousSnapshot === undefined
+        ? renderMigrationSource(prepared.snapshot, {
             generatedAt: input.generatedAt
-          }
-        )
-  input.onEvent?.({ type: 'rendered' })
-
-  return migrationSource
+          })
+        : renderDiffMigrationSource(
+            prepared.previousSnapshot,
+            prepared.snapshot,
+            {
+              generatedAt: input.generatedAt
+            }
+          )
+  }
+  if (
+    renderMode === 'databaseTypes' ||
+    renderMode === 'migrationAndDatabaseTypes'
+  ) {
+    output.databaseTypesSource = renderDatabaseTypeSource(prepared.snapshot, {
+      generatedAt: input.generatedAt
+    })
+  }
+  return { ...prepared, ...output } as TResult
 }
 
-export async function generateKyselyDatabaseTypes(
-  input: Omit<GenerateKyselyMigrationInput, 'previousMigrationSource'>
-): Promise<string> {
-  const prepared = await prepareKyselyMigration(input)
-  const databaseTypesSource = renderDatabaseTypeSource(prepared.snapshot, {
-    generatedAt: input.generatedAt
-  })
-  input.onEvent?.({ type: 'rendered' })
-
-  return databaseTypesSource
-}
-
-async function prepareKyselyMigration(input: GenerateKyselyMigrationInput) {
-  const parsed = parseSpecificationText(
-    input.source,
-    input.sourceName ?? '<input>'
-  )
-  input.onEvent?.({ type: 'parsed' })
+async function prepareKyselyMigration(
+  input: ShotInput<KyselyMigrationShotOptions>
+) {
+  const parsed = parseSpecification(input.source)
 
   const validation = await validateSpecification(parsed, {
-    loadOpenApiSource: input.loadOpenApiSource
+    loadOpenApiSource: input.sources?.openapi
   })
-  if (!validation.success) {
+  if (!validation.isValid) {
     throw new KyselyMigrationValidationError(validation.issues)
   }
-  input.onEvent?.({ type: 'validated' })
-
-  const snapshot = createDbProjectionSnapshot(validation.data, {
-    includeTentative: input.includeTentative
-  })
-  input.onEvent?.({ type: 'projected' })
 
   const previousSnapshot =
     input.previousMigrationSource === undefined
       ? undefined
       : parseEmbeddedSnapshot(input.previousMigrationSource)
-  if (previousSnapshot !== undefined) {
-    input.onEvent?.({ type: 'previousSnapshotParsed' })
-  }
+
+  const snapshot = createDbProjectionSnapshot(validation.data, {
+    includeTentative: input.includeTentative
+  })
 
   const warnings = [
     ...collectTentativeWarnings(validation.data, input.includeTentative),
     ...collectCheckConstraintWarnings(snapshot)
   ]
-  for (const warning of warnings) {
-    input.onEvent?.({ type: 'warning', message: warning.message })
-  }
 
   return {
+    spec: validation.data,
     snapshot,
     previousSnapshot,
     warnings
   }
 }
 
-export function renderMigrationSource(
+function renderMigrationSource(
   snapshot: DbProjectionSnapshot,
-  options: MigrationRenderOptions = {}
+  options: MigrationRenderOptions
 ): string {
   rejectOrderedIndexes(snapshot)
   rejectUnsupportedKyselyColumnTypes(snapshot)
 
   return [
-    renderEmbeddedSnapshot(
-      snapshot,
-      options.generatedAt ?? new Date().toISOString()
-    ),
+    renderEmbeddedSnapshot(snapshot, options.generatedAt),
     '',
     "import type { Kysely } from 'kysely'",
     '',
@@ -166,10 +167,10 @@ export function renderMigrationSource(
   ].join('\n')
 }
 
-export function renderDiffMigrationSource(
+function renderDiffMigrationSource(
   before: DbProjectionSnapshot,
   after: DbProjectionSnapshot,
-  options: MigrationRenderOptions = {}
+  options: MigrationRenderOptions
 ): string {
   validateDbProjectionSnapshot(before)
   validateDbProjectionSnapshot(after)
@@ -179,10 +180,7 @@ export function renderDiffMigrationSource(
   rejectUnsupportedKyselyColumnTypes(after)
 
   return [
-    renderEmbeddedSnapshot(
-      after,
-      options.generatedAt ?? new Date().toISOString()
-    ),
+    renderEmbeddedSnapshot(after, options.generatedAt),
     '',
     "import type { Kysely } from 'kysely'",
     '',
@@ -199,35 +197,32 @@ export function renderDiffMigrationSource(
   ].join('\n')
 }
 
-export function renderDatabaseTypeSource(
+function renderDatabaseTypeSource(
   snapshot: DbProjectionSnapshot,
-  options: MigrationRenderOptions = {}
+  options: MigrationRenderOptions
 ): string {
   return [
-    renderEmbeddedSnapshot(
-      snapshot,
-      options.generatedAt ?? new Date().toISOString()
-    ),
+    renderEmbeddedSnapshot(snapshot, options.generatedAt),
     '',
     renderDatabaseInterface('Database', snapshot, true),
     ''
   ].join('\n')
 }
 
-export function renderEmbeddedSnapshot(
+function renderEmbeddedSnapshot(
   snapshot: DbProjectionSnapshot,
   generatedAt: string
 ): string {
   const payload = gzipSync(JSON.stringify(snapshot)).toString('base64')
   const lines = [
     '// ---',
-    `// ${embeddedSnapshotIdentifier}: ${dataSketchVersion}`,
+    `// ${EMBEDDED_SNAPSHOT_IDENTIFIER}: ${dataSketchVersion}`,
     `// generated_at: ${generatedAt}`,
     '// payload: |'
   ]
 
-  for (let index = 0; index < payload.length; index += snapshotLineLength) {
-    lines.push(`//   ${payload.slice(index, index + snapshotLineLength)}`)
+  for (let index = 0; index < payload.length; index += SNAPSHOT_LINE_LENGTH) {
+    lines.push(`//   ${payload.slice(index, index + SNAPSHOT_LINE_LENGTH)}`)
   }
 
   lines.push('// ---')
@@ -235,7 +230,7 @@ export function renderEmbeddedSnapshot(
   return lines.join('\n')
 }
 
-export function parseEmbeddedSnapshot(source: string): DbProjectionSnapshot {
+function parseEmbeddedSnapshot(source: string): DbProjectionSnapshot {
   const lines = source.split(/\r?\n/)
 
   for (let index = 0; index < lines.length; index += 1) {
@@ -281,7 +276,7 @@ function isMigrationMetadata(
 ): metadata is { payload?: unknown } {
   if (metadata === null || typeof metadata !== 'object') return false
   const candidate = metadata as Record<string, unknown>
-  return candidate[embeddedSnapshotIdentifier] === dataSketchVersion
+  return candidate[EMBEDDED_SNAPSHOT_IDENTIFIER] === dataSketchVersion
 }
 
 function validateDbProjectionSnapshot(
@@ -343,20 +338,7 @@ function validateDbProjectionSnapshot(
   }
 }
 
-export function resolveMigrationOutputPath(
-  outputPath: string,
-  isoPrefix: boolean,
-  date: Date
-) {
-  if (!isoPrefix) return outputPath
-
-  return join(
-    dirname(outputPath),
-    `${date.toISOString()}_${basename(outputPath)}`
-  )
-}
-
-export function collectTentativeWarnings(
+function collectTentativeWarnings(
   dsl: Specification,
   includeTentative: boolean
 ): MigrationWarning[] {
@@ -369,7 +351,7 @@ export function collectTentativeWarnings(
     }))
 }
 
-export function collectCheckConstraintWarnings(
+function collectCheckConstraintWarnings(
   snapshot: DbProjectionSnapshot
 ): MigrationWarning[] {
   return snapshot.tables.flatMap(table =>

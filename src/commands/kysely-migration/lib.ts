@@ -1,300 +1,140 @@
-import { writeSync } from 'node:fs'
-import { readFile, writeFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
-import { parseArgs } from 'node:util'
 import { gunzipSync, gzipSync } from 'node:zlib'
-import { intro, log, outro } from '@clack/prompts'
 import { load } from 'js-yaml'
-import pc from 'picocolors'
-import { parseSpecificationText } from '../parser.ts'
-import type { IndexField, Specification, Store } from '../schema.ts'
-import { validateSpecification } from '../validator.ts'
+import { parseSpecificationText } from '../../core/parser.ts'
+import {
+  createDbProjectionSnapshot,
+  type DbProjectionSnapshot,
+  dataSketchVersion,
+  dbProjectionSnapshotIdentifier,
+  type SnapshotColumn,
+  type SnapshotColumnType,
+  type SnapshotForeignKey,
+  type SnapshotIndex,
+  type SnapshotNamedColumns,
+  type SnapshotTable
+} from '../../core/projector.ts'
+import type { Specification } from '../../core/spec.ts'
+import {
+  type ValidationIssue,
+  validateSpecification
+} from '../../core/validator.ts'
 
-const colors = pc.createColors(true)
+export { createDbProjectionSnapshot }
+
 const embeddedSnapshotIdentifier = 'data-sketch/embedded-db-projection-snapshot'
-const dbProjectionSnapshotIdentifier = 'data-sketch/db-projection-snapshot'
-const dataSketchVersion = '1.0.0-draft.0'
 const snapshotLineLength = 76
 
-type ForeignKey = NonNullable<NonNullable<Store['keys']>['foreign']>[number]
-
-export type DbProjectionSnapshot = {
-  'data-sketch/db-projection-snapshot': '1.0.0-draft.0'
-  tables: SnapshotTable[]
-}
-
-export type SnapshotTable = {
-  id: string
-  name: string
-  columns: SnapshotColumn[]
-  primaryKey?: SnapshotNamedColumns
-  uniqueConstraints: SnapshotNamedColumns[]
-  foreignKeys: SnapshotForeignKey[]
-  indexes: SnapshotIndex[]
-  checkConstraints: SnapshotCheckConstraint[]
-}
-
-export type SnapshotColumn = {
-  id: string
-  name: string
-  type: SnapshotColumnType
-  nullable: boolean
-  default:
-    | { kind: 'omitted' }
-    | { kind: 'literal'; value: string | number | boolean | null }
-}
-
-export type SnapshotColumnType = {
-  name:
-    | 'integer'
-    | 'smallint'
-    | 'boolean'
-    | 'char'
-    | 'varchar'
-    | 'decimal'
-    | 'numeric'
-    | 'date'
-    | 'time'
-    | 'timestamp'
-  length?: number
-  precision?: number
-  scale?: number
-}
-
-export type SnapshotNamedColumns = {
-  name: string
-  columns: string[]
-}
-
-export type SnapshotForeignKey = {
-  name: string
-  columns: string[]
-  references: {
-    table: string
-    columns: string[]
-  }
-  onDelete?: 'restrict' | 'cascade' | 'setNull' | 'setDefault' | 'noAction'
-  onUpdate?: 'restrict' | 'cascade' | 'setNull' | 'setDefault' | 'noAction'
-}
-
-export type SnapshotIndex = {
-  name: string
-  columns: SnapshotIndexColumn[]
-}
-
-export type SnapshotIndexColumn = {
-  name: string
-  order?: 'asc' | 'desc'
-}
-
-export type SnapshotCheckConstraint = {
-  name: string
-  kind: 'enum'
-  column: string
-  values: string[]
-}
-
-export type DbProjectionSnapshotOptions = {
-  includeTentative?: boolean
-}
-
-export type MigrationWarning = {
+type MigrationWarning = {
   message: string
 }
 
-export type MigrationRenderOptions = {
+type MigrationRenderOptions = {
   generatedAt?: string
 }
 
-export const usage = [
-  'Usage:',
-  '  shot kysely-migration <file> --output <file>',
-  '  shot kysely-migration <file> -o <file>',
-  '  shot kysely-migration <file> --output <file> --iso-prefix',
-  '  shot kysely-migration <file> --output <file> --types-output <file.d.ts>',
-  '  shot kysely-migration <file> --output <file> --include-tentative',
-  '  shot kysely-migration <file> --output <file> --dry-run',
-  '  shot kysely-migration <file> --previous-migration <file> --output <file>',
-  '  shot kysely-migration <file> -p <file> --output <file>',
-  '',
-  'Generate a Kysely TypeScript initial or diff migration.',
-  '',
-  'Options:',
-  '  -o, --output <file>      Write the migration to a file',
-  '  -p, --previous-migration <file> Read the previous DB projection snapshot',
-  '      --types-output <file.d.ts> Write Database type definitions to a file',
-  '      --iso-prefix         Prefix the migration file basename with ISO 8601 time',
-  '      --include-tentative  Include tentative stores',
-  '      --dry-run            Validate and render without writing files',
-  '  -h, --help               Show this help'
-].join('\n')
+type KyselyMigrationEvent =
+  | { type: 'parsed' }
+  | { type: 'validated' }
+  | { type: 'projected' }
+  | { type: 'previousSnapshotParsed' }
+  | { type: 'warning'; message: string }
+  | { type: 'rendered' }
 
-export async function runKyselyMigrationCommand(args: string[]) {
-  let filePath: string
-  let outputPath: string
-  let previousMigrationPath: string | undefined
-  let typesOutputPath: string | undefined
-  let isoPrefix: boolean
-  let includeTentative: boolean
-  let dryRun: boolean
+type GenerateKyselyMigrationInput = {
+  source: string
+  sourceName?: string
+  previousMigrationSource?: string
+  includeTentative: boolean
+  generatedAt: string
+  loadOpenApiSource?: (source: string) => Promise<string>
+  onEvent?: (event: KyselyMigrationEvent) => void
+}
 
-  try {
-    const parsed = parseArgs({
-      args,
-      allowPositionals: true,
-      strict: true,
-      options: {
-        output: { type: 'string', short: 'o' },
-        'previous-migration': { type: 'string', short: 'p' },
-        'types-output': { type: 'string' },
-        'iso-prefix': { type: 'boolean' },
-        'include-tentative': { type: 'boolean' },
-        'dry-run': { type: 'boolean' },
-        help: { type: 'boolean', short: 'h' }
-      }
-    })
-    if (parsed.values.help === true) {
-      writeSync(1, `${usage}\n`)
-      return 0
-    }
-    if (parsed.positionals.length !== 1 || parsed.values.output === undefined) {
-      writeOptionError('expected one input file and --output <file>')
-      return 1
-    }
-    filePath = parsed.positionals[0]
-    outputPath = parsed.values.output
-    previousMigrationPath = parsed.values['previous-migration']
-    typesOutputPath = parsed.values['types-output']
-    if (typesOutputPath !== undefined && !typesOutputPath.endsWith('.d.ts')) {
-      writeOptionError('--types-output must end with .d.ts')
-      return 1
-    }
-    isoPrefix = parsed.values['iso-prefix'] === true
-    includeTentative = parsed.values['include-tentative'] === true
-    dryRun = parsed.values['dry-run'] === true
-  } catch (error) {
-    writeOptionError((error as Error).message)
-    return 1
+export class KyselyMigrationValidationError extends Error {
+  readonly issues: ValidationIssue[]
+
+  constructor(issues: ValidationIssue[]) {
+    super(issues.map(issue => issue.message).join('\n'))
+    this.name = 'KyselyMigrationValidationError'
+    this.issues = issues
   }
+}
 
-  intro('Migration generation')
+export async function generateKyselyMigration(
+  input: GenerateKyselyMigrationInput
+): Promise<string> {
+  const prepared = await prepareKyselyMigration(input)
 
-  let source: Buffer
-  try {
-    source = await readFile(filePath)
-    log.success('Data Sketch read')
-  } catch (error) {
-    return reportMigrationError('Reading Data Sketch', error)
-  }
+  const migrationSource =
+    prepared.previousSnapshot === undefined
+      ? renderMigrationSource(prepared.snapshot, {
+          generatedAt: input.generatedAt
+        })
+      : renderDiffMigrationSource(
+          prepared.previousSnapshot,
+          prepared.snapshot,
+          {
+            generatedAt: input.generatedAt
+          }
+        )
+  input.onEvent?.({ type: 'rendered' })
 
-  let input: unknown
-  try {
-    input = parseSpecificationText(source.toString('utf8'), filePath)
-  } catch (error) {
-    return reportMigrationError('Parsing Data Sketch', error)
-  }
+  return migrationSource
+}
 
-  const validation = await validateSpecification(input, {
-    sourcePath: filePath
+export async function generateKyselyDatabaseTypes(
+  input: Omit<GenerateKyselyMigrationInput, 'previousMigrationSource'>
+): Promise<string> {
+  const prepared = await prepareKyselyMigration(input)
+  const databaseTypesSource = renderDatabaseTypeSource(prepared.snapshot, {
+    generatedAt: input.generatedAt
+  })
+  input.onEvent?.({ type: 'rendered' })
+
+  return databaseTypesSource
+}
+
+async function prepareKyselyMigration(input: GenerateKyselyMigrationInput) {
+  const parsed = parseSpecificationText(
+    input.source,
+    input.sourceName ?? '<input>'
+  )
+  input.onEvent?.({ type: 'parsed' })
+
+  const validation = await validateSpecification(parsed, {
+    loadOpenApiSource: input.loadOpenApiSource
   })
   if (!validation.success) {
-    log.error('Validating Data Sketch failed')
-    writeReason(validation.issues.map(issue => issue.message).join('\n'))
-    outro(colors.red('Failed'))
-    await flushStdout()
-    return 1
+    throw new KyselyMigrationValidationError(validation.issues)
   }
-  log.success('Validating Data Sketch')
+  input.onEvent?.({ type: 'validated' })
 
   const snapshot = createDbProjectionSnapshot(validation.data, {
-    includeTentative
+    includeTentative: input.includeTentative
   })
-  log.success('Creating DB projection snapshot')
+  input.onEvent?.({ type: 'projected' })
 
-  let previousSnapshot: DbProjectionSnapshot | undefined
-  if (previousMigrationPath !== undefined) {
-    let previousSource: Buffer
-    try {
-      previousSource = await readFile(previousMigrationPath)
-      log.success('Previous migration read')
-    } catch (error) {
-      return reportMigrationError('Reading previous migration', error)
-    }
-
-    try {
-      previousSnapshot = parseEmbeddedSnapshot(previousSource.toString('utf8'))
-      log.success('Previous DB projection snapshot parsed')
-    } catch (error) {
-      return reportMigrationError(
-        'Parsing previous DB projection snapshot',
-        error
-      )
-    }
+  const previousSnapshot =
+    input.previousMigrationSource === undefined
+      ? undefined
+      : parseEmbeddedSnapshot(input.previousMigrationSource)
+  if (previousSnapshot !== undefined) {
+    input.onEvent?.({ type: 'previousSnapshotParsed' })
   }
 
   const warnings = [
-    ...collectTentativeWarnings(validation.data, includeTentative),
+    ...collectTentativeWarnings(validation.data, input.includeTentative),
     ...collectCheckConstraintWarnings(snapshot)
   ]
-  for (const warning of warnings) log.warn(warning.message)
-
-  let migrationSource: string
-  let typesSource: string | undefined
-  try {
-    const generatedAt = new Date().toISOString()
-    migrationSource =
-      previousSnapshot === undefined
-        ? renderMigrationSource(snapshot, { generatedAt })
-        : renderDiffMigrationSource(previousSnapshot, snapshot, { generatedAt })
-    if (typesOutputPath !== undefined) {
-      typesSource = renderDatabaseTypeSource(snapshot, { generatedAt })
-    }
-    log.success('Rendering migration')
-  } catch (error) {
-    return reportMigrationError('Rendering migration', error)
+  for (const warning of warnings) {
+    input.onEvent?.({ type: 'warning', message: warning.message })
   }
-
-  if (dryRun) {
-    log.success('Dry run completed')
-    outro(colors.green('Succeeded'))
-    await flushStdout()
-    return 0
-  }
-
-  const finalOutputPath = resolveMigrationOutputPath(
-    outputPath,
-    isoPrefix,
-    new Date()
-  )
-
-  try {
-    await writeFile(finalOutputPath, migrationSource)
-    log.success('Migration written')
-    if (typesOutputPath !== undefined && typesSource !== undefined) {
-      await writeFile(typesOutputPath, typesSource)
-      log.success('Type definitions written')
-    }
-  } catch (error) {
-    return reportMigrationError('Writing migration', error)
-  }
-
-  log.success('Migration generated')
-  outro(colors.green('Succeeded'))
-  await flushStdout()
-  return 0
-}
-
-export function createDbProjectionSnapshot(
-  dsl: Specification,
-  options: DbProjectionSnapshotOptions = {}
-): DbProjectionSnapshot {
-  const includeTentative = options.includeTentative === true
 
   return {
-    [dbProjectionSnapshotIdentifier]: dataSketchVersion,
-    tables: Object.entries(dsl.stores)
-      .filter(([, store]) => includeTentative || store.tentative !== true)
-      .map(([storeId, store]) => createSnapshotTable(storeId, store, dsl))
+    snapshot,
+    previousSnapshot,
+    warnings
   }
 }
 
@@ -537,130 +377,6 @@ export function collectCheckConstraintWarnings(
       message: `Enum check constraint ignored by migration renderer: ${table.name}.${checkConstraint.column}`
     }))
   )
-}
-
-function createSnapshotTable(
-  storeId: string,
-  store: Store,
-  dsl: Specification
-): SnapshotTable {
-  const table: SnapshotTable = {
-    id: storeId,
-    name: store.name,
-    columns: Object.entries(store.fields).map(([fieldId, field]) =>
-      createSnapshotColumn(fieldId, field)
-    ),
-    uniqueConstraints: (store.keys?.unique ?? []).map(unique =>
-      createNamedColumns(unique, store)
-    ),
-    foreignKeys: (store.keys?.foreign ?? []).map(foreign =>
-      createForeignKey(foreign, store, dsl)
-    ),
-    indexes: (store.indexes ?? []).map(index => ({
-      name: index.name,
-      columns: index.fields.map(field => createIndexColumn(field, store))
-    })),
-    checkConstraints: createCheckConstraints(store)
-  }
-
-  if (store.keys?.primary !== undefined) {
-    table.primaryKey = createNamedColumns(store.keys.primary, store)
-  }
-
-  return table
-}
-
-function createSnapshotColumn(
-  fieldId: string,
-  field: Store['fields'][string]
-): SnapshotColumn {
-  return {
-    id: fieldId,
-    name: field.name,
-    type: createColumnType(field.type),
-    nullable: field.nullable,
-    default: Object.hasOwn(field, 'default')
-      ? { kind: 'literal', value: field.default ?? null }
-      : { kind: 'omitted' }
-  }
-}
-
-function createColumnType(
-  fieldType: Store['fields'][string]['type']
-): SnapshotColumnType {
-  const columnType: SnapshotColumnType = { name: fieldType.name }
-
-  if (fieldType.length !== undefined) columnType.length = fieldType.length
-  if (fieldType.precision !== undefined) {
-    columnType.precision = fieldType.precision
-  }
-  if (fieldType.scale !== undefined) columnType.scale = fieldType.scale
-
-  return columnType
-}
-
-function createNamedColumns(
-  namedFields: { name: string; fields: string[] },
-  store: Store
-): SnapshotNamedColumns {
-  return {
-    name: namedFields.name,
-    columns: namedFields.fields.map(fieldId => store.fields[fieldId].name)
-  }
-}
-
-function createForeignKey(
-  foreign: ForeignKey,
-  store: Store,
-  dsl: Specification
-): SnapshotForeignKey {
-  const referencedStore = dsl.stores[foreign.references.store]
-  const snapshotForeignKey: SnapshotForeignKey = {
-    name: foreign.name,
-    columns: foreign.fields.map(fieldId => store.fields[fieldId].name),
-    references: {
-      table: referencedStore.name,
-      columns: foreign.references.fields.map(
-        fieldId => referencedStore.fields[fieldId].name
-      )
-    }
-  }
-
-  if (foreign.onDelete !== undefined) {
-    snapshotForeignKey.onDelete = foreign.onDelete
-  }
-  if (foreign.onUpdate !== undefined) {
-    snapshotForeignKey.onUpdate = foreign.onUpdate
-  }
-
-  return snapshotForeignKey
-}
-
-function createIndexColumn(
-  indexField: IndexField,
-  store: Store
-): SnapshotIndexColumn {
-  if (typeof indexField === 'string') {
-    return { name: store.fields[indexField].name }
-  }
-
-  const column: SnapshotIndexColumn = {
-    name: store.fields[indexField.field].name
-  }
-  if (indexField.order !== undefined) column.order = indexField.order
-
-  return column
-}
-
-function createCheckConstraints(store: Store): SnapshotCheckConstraint[] {
-  return Object.values(store.fields)
-    .filter(field => field.enum !== undefined)
-    .map(field => ({
-      name: `ck_${store.name}_${field.name}_enum`,
-      kind: 'enum',
-      column: field.name,
-      values: field.enum as string[]
-    }))
 }
 
 function renderDatabaseInterface(
@@ -1191,24 +907,4 @@ function literal(value: string | number | boolean | null) {
 
 function literalArray(values: string[]) {
   return `[${values.map(literal).join(', ')}]`
-}
-
-function flushStdout() {
-  return new Promise<void>(resolve => process.stdout.write('', () => resolve()))
-}
-
-function writeOptionError(reason: string) {
-  writeSync(2, `Error: ${reason}\n\n${usage}\n`)
-}
-
-async function reportMigrationError(step: string, error: unknown) {
-  log.error(`${step} failed`)
-  writeReason((error as Error).message)
-  outro(colors.red('Failed'))
-  await flushStdout()
-  return 1
-}
-
-function writeReason(reason: string) {
-  process.stdout.write(`${reason}\n`)
 }

@@ -1,13 +1,14 @@
 import { writeSync } from 'node:fs'
+import { readFile } from 'node:fs/promises'
+import { dirname, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { intro, log, outro } from '@clack/prompts'
 import pc from 'picocolors'
-import { parseSpecificationFile } from '../parser.ts'
-import { validateSpecification } from '../validator.ts'
+import { checkDataSketch } from './lib.ts'
 
 const colors = pc.createColors(true)
 
-export const usage = [
+const usage = [
   'Usage: shot check <file>',
   '',
   'Validate a Valuable Data Specification v1 YAML or JSON file.',
@@ -16,10 +17,17 @@ export const usage = [
   '  -h, --help  Show this help'
 ].join('\n')
 
-export async function runCheckCommand(args: string[]) {
-  let filePath: string
+export const command = {
+  name: 'check',
+  summary: 'Validate a Valuable Data Specification v1 YAML or JSON file',
+  usage,
+  run: runCheckCommand
+}
+
+async function runCheckCommand(args: string[]) {
+  let parsed: ReturnType<typeof parseArgs>
   try {
-    const parsed = parseArgs({
+    parsed = parseArgs({
       args,
       allowPositionals: true,
       strict: true,
@@ -27,49 +35,55 @@ export async function runCheckCommand(args: string[]) {
         help: { type: 'boolean', short: 'h' }
       }
     })
-    if (parsed.values.help === true) {
-      writeSync(1, `${usage}\n`)
-      return 0
-    }
-    if (parsed.positionals.length !== 1) {
-      writeOptionError('missing file argument')
-      return 1
-    }
-    filePath = parsed.positionals[0]
   } catch (error) {
     writeOptionError((error as Error).message)
-    return 1
+    throw new Error((error as Error).message)
   }
+  if (parsed.values.help === true) {
+    writeSync(1, `${usage}\n`)
+    return
+  }
+  if (parsed.positionals.length !== 1) {
+    writeOptionError('missing file argument')
+    throw new Error('missing file argument')
+  }
+  const filePath = parsed.positionals[0]
 
   intro('Data Sketch validation')
 
-  let input: unknown
+  let source: string
   try {
-    input = await parseSpecificationFile(filePath)
+    source = await readFile(filePath, 'utf8')
     log.success('Data Sketch read')
   } catch (error) {
     log.error('Reading Data Sketch failed')
     writeReason((error as Error).message)
     outro(colors.red('Failed'))
     await flushStdout()
-    return 1
+    throw new Error((error as Error).message)
   }
 
-  const result = await validateSpecification(input, { sourcePath: filePath })
-
-  if (!result.success) {
+  const result = await checkDataSketch(source, {
+    sourceName: filePath,
+    loadOpenApiSource: source =>
+      readFile(resolve(dirname(filePath), source), 'utf8'),
+    onEvent: event => {
+      if (event.type === 'validated') {
+        log.success('Validating Data Sketch')
+      }
+    }
+  })
+  if (result !== '') {
     log.error('Validating Data Sketch failed')
-    writeValidationIssues(result.issues.map(issue => issue.message))
+    writeValidationIssues(result)
     outro(colors.red('Failed'))
     await flushStdout()
-    return 1
+    throw new Error(result)
   }
 
-  log.success('Validating Data Sketch')
   log.success('Data Sketch is valid')
   outro(colors.green('Succeeded'))
   await flushStdout()
-  return 0
 }
 
 function flushStdout() {
@@ -80,8 +94,8 @@ function writeOptionError(reason: string) {
   writeSync(2, `Error: ${reason}\n\n${usage}\n`)
 }
 
-function writeValidationIssues(messages: string[]) {
-  process.stdout.write(`${messages.join('\n')}\n`)
+function writeValidationIssues(messages: string) {
+  process.stdout.write(`${messages}\n`)
 }
 
 function writeReason(reason: string) {

@@ -1,11 +1,45 @@
 import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
 import { describe, it } from 'node:test'
+import { checkDataSketch } from '../src/commands/check/lib.ts'
 import { fixturePath, runCli } from './helper/helper.ts'
 
 const greenSucceeded = `${String.fromCharCode(27)}[32mSucceeded${String.fromCharCode(27)}[39m`
 const redFailed = `${String.fromCharCode(27)}[31mFailed${String.fromCharCode(27)}[39m`
 
 describe('check', () => {
+  it('validates Data Sketch source text without a source path', async () => {
+    const source = await readFile(
+      fixturePath('check-command', 'online-shop-minimal.valid.yaml'),
+      'utf8'
+    )
+    const events: string[] = []
+
+    const result = await checkDataSketch(source, {
+      onEvent: event => events.push(event.type)
+    })
+
+    assert.equal(result, '')
+    assert.deepEqual(events, ['parsed', 'validated'])
+  })
+
+  it('validates OpenAPI traces through a source loader callback', async () => {
+    const source = await readFile(
+      fixturePath(
+        'validator',
+        'online-shop-sources-openapi-noisy-file.valid.yaml'
+      ),
+      'utf8'
+    )
+
+    const result = await checkDataSketch(source, {
+      loadOpenApiSource: openApiSource =>
+        readFile(fixturePath('validator', openApiSource), 'utf8')
+    })
+
+    assert.equal(result, '')
+  })
+
   it('exits successfully for the customer and order fixture from the Data Sketch example', async () => {
     const result = await runCli(process.execPath, [
       'src/cli.ts',
@@ -18,6 +52,20 @@ describe('check', () => {
     assert.match(result.stdout, /Data Sketch is valid/)
     assert.match(result.stdout, /Data Sketch validation/)
     assert.ok(result.stdout.includes(greenSucceeded))
+    assert.equal(result.stderr, '')
+  })
+
+  it('exits successfully for a fixture with OpenAPI trace validation', async () => {
+    const result = await runCli(process.execPath, [
+      'src/cli.ts',
+      'check',
+      fixturePath(
+        'validator',
+        'online-shop-sources-openapi-noisy-file.valid.yaml'
+      )
+    ])
+
+    assert.match(result.stdout, /Data Sketch is valid/)
     assert.equal(result.stderr, '')
   })
 

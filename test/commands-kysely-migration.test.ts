@@ -19,15 +19,16 @@ import {
 } from 'kysely/migration'
 import {
   createDbProjectionSnapshot,
+  generateKyselyDatabaseTypes,
   parseEmbeddedSnapshot,
   renderDatabaseTypeSource,
   renderDiffMigrationSource,
   renderEmbeddedSnapshot,
   renderMigrationSource,
   resolveMigrationOutputPath
-} from '../src/commands/kysely-migration.ts'
-import { parseSpecificationFile } from '../src/parser.ts'
-import { validateSpecification } from '../src/validator.ts'
+} from '../src/commands/kysely-migration/lib.ts'
+import { parseSpecificationFile } from '../src/core/parser.ts'
+import { validateSpecification } from '../src/core/validator.ts'
 import {
   createTemporaryDirectory,
   fixturePath,
@@ -224,6 +225,21 @@ describe('kysely-migration', () => {
 
       assert.deepEqual(embedded, snapshot)
       assert.equal(output, expected)
+    })
+
+    it('generates database type definitions from source text', async () => {
+      const source = await readText('online-shop-initial.valid.yaml')
+      const events: string[] = []
+
+      const output = await generateKyselyDatabaseTypes({
+        source,
+        includeTentative: false,
+        generatedAt: fixedGeneratedAt,
+        onEvent: event => events.push(event.type)
+      })
+
+      assert.match(output, /export interface Database/)
+      assert.deepEqual(events, ['parsed', 'validated', 'projected', 'rendered'])
     })
 
     it('renders type definitions for defaults and nullable columns but rejects unsupported Kysely column types in migration output', async () => {
@@ -627,6 +643,26 @@ describe('kysely-migration', () => {
       assert.match(stdout, /Type definitions written/)
       assert.match(stdout, /Migration generated/)
       assert.ok(stdout.includes(greenSucceeded))
+    })
+
+    it('validates OpenAPI traces through the CLI source loader', async () => {
+      const directory = await createTemporaryDirectory(
+        'shot-kysely-migration-',
+        temporaryDirectories
+      )
+      const migrationPath = join(directory, 'openapi-trace.ts')
+      const { exitCode, stdout } = await runKyselyMigrationCli([
+        fixturePath(
+          'validator',
+          'online-shop-sources-openapi-noisy-file.valid.yaml'
+        ),
+        '--output',
+        migrationPath
+      ])
+
+      assert.equal(exitCode, 0)
+      assert.match(await readFile(migrationPath, 'utf8'), /createTable/)
+      assert.match(stdout, /Migration generated/)
     })
 
     it('writes a diff migration from a previous DB projection snapshot with shorthand input', async () => {

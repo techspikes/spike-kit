@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { load, type YAMLException } from 'js-yaml'
 import type { z } from 'zod'
-import { type IndexField, specificationSchema } from './schema.ts'
+import { type IndexField, specificationSchema } from './spec.ts'
 
 export type ValidationIssue = {
   path: (string | number)[]
@@ -22,6 +22,7 @@ export type ValidationResult =
 
 export type ValidationOptions = {
   sourcePath?: string
+  loadOpenApiSource?: (source: string) => Promise<string>
 }
 
 export async function validateSpecification(
@@ -188,14 +189,12 @@ async function validateOpenApiTrace(
   const openApiSource = dsl.sources?.openapi
   if (openApiSource === undefined) return []
 
-  const openApiPath =
-    options.sourcePath === undefined
-      ? openApiSource
-      : resolve(dirname(options.sourcePath), openApiSource)
-
   let source: string
   try {
-    source = await readFile(openApiPath, 'utf8')
+    source =
+      options.loadOpenApiSource === undefined
+        ? await readOpenApiSource(openApiSource, options)
+        : await options.loadOpenApiSource(openApiSource)
   } catch (error) {
     return [
       {
@@ -235,6 +234,18 @@ async function validateOpenApiTrace(
   }
 
   return issues
+}
+
+async function readOpenApiSource(
+  openApiSource: string,
+  options: ValidationOptions
+) {
+  const openApiPath =
+    options.sourcePath === undefined
+      ? openApiSource
+      : resolve(dirname(options.sourcePath), openApiSource)
+
+  return readFile(openApiPath, 'utf8')
 }
 
 type OpenApiOperationIds = {

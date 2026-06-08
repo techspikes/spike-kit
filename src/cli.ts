@@ -1,13 +1,26 @@
 import { writeSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { runCheckCommand } from './commands/check.ts'
-import { runKyselyMigrationCommand } from './commands/kysely-migration.ts'
-import { runTableSpecCommand } from './commands/table-spec.ts'
+import { command as checkCommand } from './commands/check/index.ts'
+import { command as kyselyMigrationCommand } from './commands/kysely-migration/index.ts'
+import { command as tableSpecCommand } from './commands/table-spec/index.ts'
 
 const require = createRequire(import.meta.url)
 const packageJson = require('../package.json') as { version: string }
 
-export const usage = [
+type Command = {
+  name: string
+  summary: string
+  usage: string
+  run(args: string[]): Promise<void>
+}
+
+const commands: Command[] = [
+  checkCommand,
+  kyselyMigrationCommand,
+  tableSpecCommand
+]
+
+const usage = [
   'Usage:',
   '  shot check <file>',
   '  shot kysely-migration <file> --output <file>',
@@ -23,7 +36,16 @@ export const usage = [
   '  -v, --version  Show version'
 ].join('\n')
 
-export async function main(argv = process.argv.slice(2)) {
+async function main(argv = process.argv.slice(2)) {
+  try {
+    return await runMain(argv)
+  } catch (error) {
+    writeOptionError((error as Error).message)
+    return 1
+  }
+}
+
+async function runMain(argv: string[]) {
   const [subcommand, ...args] = argv
   if (subcommand === '--help' || subcommand === '-h') {
     writeSync(1, `${usage}\n`)
@@ -34,20 +56,19 @@ export async function main(argv = process.argv.slice(2)) {
     return 0
   }
   if (subcommand === undefined) {
-    writeOptionError('missing subcommand')
-    return 1
+    throw new Error('missing subcommand')
   }
 
-  switch (subcommand) {
-    case 'check':
-      return runCheckCommand(args)
-    case 'kysely-migration':
-      return runKyselyMigrationCommand(args)
-    case 'table-spec':
-      return runTableSpecCommand(args)
-    default:
-      writeOptionError(`unknown subcommand "${subcommand}"`)
-      return 1
+  const command = commands.find(command => command.name === subcommand)
+  if (command === undefined) {
+    throw new Error(`unknown subcommand "${subcommand}"`)
+  }
+
+  try {
+    await command.run(args)
+    return 0
+  } catch {
+    return 1
   }
 }
 

@@ -7,8 +7,9 @@ This document records implementation choices for the behavior specified in `shot
 The package exposes only the CLI entrypoint. It does not provide a public render
 library API.
 
-Within the source tree, `src/commands/table-spec.ts` exports
-`runTableSpecCommand(args: string[])` and the low-level
+Within the source tree, `src/commands/table-spec/index.ts` exports the CLI
+command object. `src/commands/table-spec/lib.ts` exports
+`generateTableSpecDocument(...)` and the low-level
 `renderTableSpecDocument(...)` helper used by focused document rendering tests.
 
 ## Progress Output Implementation

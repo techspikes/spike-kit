@@ -4,11 +4,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, it } from 'node:test'
 import {
+  generateTableSpecDocument,
   renderTableSpecDocument,
   type TableSpecDocumentMetadata
-} from '../src/commands/table-spec.ts'
-import { parseSpecificationFile } from '../src/parser.ts'
-import { validateSpecification } from '../src/validator.ts'
+} from '../src/commands/table-spec/lib.ts'
+import { parseSpecificationFile } from '../src/core/parser.ts'
+import { validateSpecification } from '../src/core/validator.ts'
 import {
   createTemporaryDirectory,
   fixturePath,
@@ -158,6 +159,26 @@ describe('table-spec', () => {
   })
 
   describe('document rendering', () => {
+    it('generates a table specification document from source text', async () => {
+      const source = await readFile(
+        fixturePath('table-spec', 'online-shop-minimal.valid.yaml'),
+        'utf8'
+      )
+      const expected = await readFile(
+        fixturePath('table-spec', 'expected/online-shop-minimal.md'),
+        'utf8'
+      )
+      const events: string[] = []
+
+      const output = await generateTableSpecDocument(source, {
+        metadata: fixedMetadata,
+        onEvent: event => events.push(event.type)
+      })
+
+      assert.equal(output, expected)
+      assert.deepEqual(events, ['parsed', 'validated', 'rendered'])
+    })
+
     it('renders the Valuable Data Specification v1 customer and order example as the expected table specification', async () => {
       const input = await parseSpecificationFile(
         fixturePath('table-spec', 'online-shop-minimal.valid.yaml')
@@ -345,6 +366,27 @@ describe('table-spec', () => {
       assert.match(stdout, /Table specification written/)
       assert.match(stdout, /Table specification generated/)
       assert.ok(stdout.includes(greenSucceeded))
+    })
+
+    it('validates OpenAPI traces through the CLI source loader', async () => {
+      const directory = await createTemporaryDirectory(
+        'shot-table-spec-',
+        temporaryDirectories
+      )
+      const outputPath = join(directory, 'openapi-trace.md')
+      const result = await runCli(process.execPath, [
+        'src/cli.ts',
+        'table-spec',
+        fixturePath(
+          'validator',
+          'online-shop-sources-openapi-noisy-file.valid.yaml'
+        ),
+        '--output',
+        outputPath
+      ])
+
+      assert.match(await readFile(outputPath, 'utf8'), /# online-shop/)
+      assert.match(result.stdout, /Table specification generated/)
     })
 
     it('shows the failed validation step and reason in file-output mode', async () => {

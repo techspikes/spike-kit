@@ -8,21 +8,23 @@ This implementation completes initial migration generation and diff migration ge
 
 ## Module Shape
 
-kysely-migration command code lives in `src/commands/kysely-migration.ts`.
+kysely-migration command code lives in `src/commands/kysely-migration/`.
 
 The package exposes only the CLI entrypoint. It does not provide a public render
 library API.
 
-Within the source tree, the command module exports:
+Within the source tree, `index.ts` exports the CLI command object and
+`lib.ts` exports:
 
-- `runKyselyMigrationCommand(args: string[])`
+- `generateKyselyMigration(...)`
 - low-level snapshot and rendering helpers used by focused tests, such as
   `createDbProjectionSnapshot(...)`, `renderMigrationSource(...)`,
   `renderDiffMigrationSource(...)`, `renderDatabaseTypeSource(...)`,
   `renderEmbeddedSnapshot(...)`, `parseEmbeddedSnapshot(...)`, and
   `resolveMigrationOutputPath(...)`
 
-The existing snapshot projection logic is kept close to the command because it is migration-specific and not yet a stable general-purpose utility.
+DB projection snapshot creation lives in `src/core/projector.ts`. It remains a
+small concrete helper rather than a general projection abstraction.
 
 ## Processing Order
 

@@ -1,9 +1,3 @@
-import { createHash } from 'node:crypto'
-import { writeSync } from 'node:fs'
-import { readFile, writeFile } from 'node:fs/promises'
-import { basename } from 'node:path'
-import { parseArgs } from 'node:util'
-import { intro, log, outro } from '@clack/prompts'
 import { dump } from 'js-yaml'
 import type {
   Heading,
@@ -21,12 +15,12 @@ import type {
 import { frontmatterToMarkdown } from 'mdast-util-frontmatter'
 import { gfmTableToMarkdown } from 'mdast-util-gfm-table'
 import { toMarkdown } from 'mdast-util-to-markdown'
-import pc from 'picocolors'
-import { parseSpecificationText } from '../parser.ts'
-import type { IndexField, Specification, Store } from '../schema.ts'
-import { validateSpecification } from '../validator.ts'
-
-const colors = pc.createColors(true)
+import { parseSpecificationText } from '../../core/parser.ts'
+import type { IndexField, Specification, Store } from '../../core/spec.ts'
+import {
+  type ValidationIssue,
+  validateSpecification
+} from '../../core/validator.ts'
 
 export type TableSpecDocumentMetadata = {
   source: string
@@ -34,136 +28,48 @@ export type TableSpecDocumentMetadata = {
   generatedAt: string
 }
 
-export const usage = [
-  'Usage:',
-  '  shot table-spec <file> --output <file>',
-  '  shot table-spec <file> -o <file>',
-  '',
-  'Generate a Markdown table specification document.',
-  '',
-  'Options:',
-  '  -o, --output <file>  Write the document to a file',
-  '  -h, --help           Show this help'
-].join('\n')
+type TableSpecEvent =
+  | { type: 'parsed' }
+  | { type: 'validated' }
+  | { type: 'rendered' }
 
-export async function runTableSpecCommand(args: string[]) {
-  let filePath: string
-  let outputPath: string
+type GenerateTableSpecDocumentOptions = {
+  metadata: TableSpecDocumentMetadata
+  sourceName?: string
+  loadOpenApiSource?: (source: string) => Promise<string>
+  onEvent?: (event: TableSpecEvent) => void
+}
 
-  try {
-    const parsed = parseArgs({
-      args,
-      allowPositionals: true,
-      strict: true,
-      options: {
-        output: { type: 'string', short: 'o' },
-        help: { type: 'boolean', short: 'h' }
-      }
-    })
-    if (parsed.values.help === true) {
-      writeSync(1, `${usage}\n`)
-      return 0
-    }
-    if (parsed.positionals.length !== 1 || parsed.values.output === undefined) {
-      writeOptionError('expected one input file and --output <file>')
-      return 1
-    }
-    filePath = parsed.positionals[0]
-    outputPath = parsed.values.output
-  } catch (error) {
-    writeOptionError((error as Error).message)
-    return 1
+export class TableSpecValidationError extends Error {
+  readonly issues: ValidationIssue[]
+
+  constructor(issues: ValidationIssue[]) {
+    super(issues.map(issue => issue.message).join('\n'))
+    this.name = 'TableSpecValidationError'
+    this.issues = issues
   }
+}
 
-  intro('Table specification generation')
+export async function generateTableSpecDocument(
+  source: string,
+  options: GenerateTableSpecDocumentOptions
+): Promise<string> {
+  const input = parseSpecificationText(source, options.sourceName ?? '<input>')
+  options.onEvent?.({ type: 'parsed' })
 
-  let source: Buffer
-  try {
-    source = await readFile(filePath)
-    log.success('Data Sketch read')
-  } catch (error) {
-    log.error('Reading Data Sketch failed')
-    writeReason((error as Error).message)
-    outro(colors.red('Failed'))
-    await flushStdout()
-    return 1
-  }
-
-  const sourceSha256 = createHash('sha256').update(source).digest('hex')
-  let input: unknown
-  try {
-    input = parseSpecificationText(source.toString('utf8'), filePath)
-  } catch (error) {
-    return reportTableSpecError('Parsing Data Sketch', error)
-  }
-
-  const result = await validateSpecification(input, { sourcePath: filePath })
+  const result = await validateSpecification(input, {
+    loadOpenApiSource: options.loadOpenApiSource
+  })
 
   if (!result.success) {
-    return reportTableSpecValidationIssues(
-      'Validating Data Sketch',
-      result.issues.map(issue => issue.message)
-    )
+    throw new TableSpecValidationError(result.issues)
   }
-  log.success('Validating Data Sketch')
+  options.onEvent?.({ type: 'validated' })
 
-  const output = renderTableSpecDocument(result.data, {
-    source: basename(filePath),
-    sourceSha256,
-    generatedAt: new Date().toISOString()
-  })
-  log.success('Rendering table specification')
+  const document = renderTableSpecDocument(result.data, options.metadata)
+  options.onEvent?.({ type: 'rendered' })
 
-  try {
-    await writeFile(outputPath, output)
-    log.success('Table specification written')
-  } catch (error) {
-    log.error('Writing table specification failed')
-    writeReason((error as Error).message)
-    outro(colors.red('Failed'))
-    await flushStdout()
-    return 1
-  }
-
-  log.success('Table specification generated')
-  outro(colors.green('Succeeded'))
-  await flushStdout()
-  return 0
-}
-
-function flushStdout() {
-  return new Promise<void>(resolve => process.stdout.write('', () => resolve()))
-}
-
-function writeOptionError(reason: string) {
-  writeSync(2, `Error: ${reason}\n\n${usage}\n`)
-}
-
-async function reportTableSpecError(step: string, error: unknown) {
-  log.error(`${step} failed`)
-  writeReason((error as Error).message)
-  outro(colors.red('Failed'))
-  await flushStdout()
-  return 1
-}
-
-async function reportTableSpecValidationIssues(
-  step: string,
-  messages: string[]
-) {
-  log.error(`${step} failed`)
-  writeValidationIssues(messages)
-  outro(colors.red('Failed'))
-  await flushStdout()
-  return 1
-}
-
-function writeValidationIssues(messages: string[]) {
-  process.stdout.write(`${messages.join('\n')}\n`)
-}
-
-function writeReason(reason: string) {
-  process.stdout.write(`${reason}\n`)
+  return document
 }
 
 export function renderTableSpecDocument(

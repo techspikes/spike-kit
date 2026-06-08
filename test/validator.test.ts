@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { parseSpecificationFile } from '../src/parser.ts'
-import { validateSpecification } from '../src/validator.ts'
+import { parseSpecificationFile } from '../src/core/parser.ts'
+import { validateSpecification } from '../src/core/validator.ts'
 import { fixturePath } from './helper/helper.ts'
 
 const validateFixture = async (name: string) =>

@@ -16,26 +16,44 @@ Examples:
 - `test/commands/kysely-migration/kysely-migration.test.ts` may use `test/commands/kysely-migration/fixtures/`.
 - `test/core/validator/validator.test.ts` may use `test/core/validator/fixtures/`.
 
-Use `fixturePath(import.meta.url, ...)` from `test/helper.ts` in tests
-with colocated fixtures. Do not make a command test reach into another test's
-`fixtures/` directory. If a command needs the same scenario, copy the fixture
-into that command's fixture directory and keep the copy local to that command.
+Use a local `readFixtureFile('fixtures/...')` helper in each test file with
+colocated fixtures. The helper must resolve from `fileURLToPath(import.meta.url)`
+and reject paths outside that test file's directory.
+
+Do not make a command test reach into another test's `fixtures/` directory. If a
+command needs the same scenario, copy the fixture into that command's fixture
+directory and keep the copy local to that command.
 
 ## Test Helpers
 
 Use `test/helper.ts` for common test plumbing that would otherwise distract
 from behavior assertions.
 
-- Use `fixturePath(import.meta.url, ...)` for colocated fixtures.
-- Use `readTextFile` and `writeTextFile` instead of importing
-  `node:fs/promises` in command tests.
-- Use `joinFilePath` and `joinTemporaryFilePath` instead of importing
-  `node:path` or `node:os` in command tests.
+- Use local `readFixtureFile('fixtures/...')` helpers for fixture reads.
+- Use `readTemporaryFile` and `writeTemporaryFile` for files under tmpfs.
 - Use `createTemporaryDirectory` and `removeTemporaryDirectories` for temporary
   output directories.
 
 Keep helpers small and literal. Do not hide behavior-specific expectations or
 fixture choices behind generic helpers.
+
+`test/commands/kysely-migration/kysely-migration.test.ts` is currently excluded
+from this rule and may keep its existing file helpers until that test is
+refactored separately.
+
+## Output Assertions
+
+Compare generated YAML, JSON, Markdown, and TypeScript output against static
+fixture files with `assert.equal` or `assert.deepEqual`. Keep expected output
+fixtures under the owning test's `fixtures/expected/` directory.
+
+Use `assert.match` only for error messages, usage text, versions, timestamps,
+generated file names, and other non-output text where exact static comparison is
+not the behavior under test.
+
+Use `runCommand` only for CLI behavior such as argument parsing, stdout/stderr,
+exit codes, and real file output. Prefer `readFixtureFile('fixtures/...')`
+followed by `shot(...)` when the library API covers the behavior directly.
 
 ## Fixture Duplication
 

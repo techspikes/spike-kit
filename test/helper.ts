@@ -1,6 +1,6 @@
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { isAbsolute, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { captureLoggerForTest } from '../src/core/logger.ts'
 
@@ -16,19 +16,13 @@ export async function createTemporaryDirectory(
   return directory
 }
 
-export function joinFilePath(...segments: string[]) {
-  return join(...segments)
-}
-
-export function joinTemporaryFilePath(...segments: string[]) {
-  return join(tmpdir(), ...segments)
-}
-
-export async function readTextFile(path: string) {
+export async function readTemporaryFile(path: string) {
+  assertTemporaryPath(path)
   return readFile(path, 'utf8')
 }
 
-export async function writeTextFile(path: string, content: string) {
+export async function writeTemporaryFile(path: string, content: string) {
+  assertTemporaryPath(path)
   await writeFile(path, content)
 }
 
@@ -39,6 +33,21 @@ export async function removeTemporaryDirectories(directories: string[]) {
       rm(directory, { recursive: true, force: true })
     )
   )
+}
+
+function assertTemporaryPath(path: string) {
+  const temporaryRoot = resolve(tmpdir())
+  const resolvedPath = resolve(path)
+  const relativePath = relative(temporaryRoot, resolvedPath)
+
+  if (
+    relativePath === '' ||
+    (!relativePath.startsWith('..') && !isAbsolute(relativePath))
+  ) {
+    return
+  }
+
+  throw new Error(`temporary file path must be under ${temporaryRoot}`)
 }
 
 export async function runCommand(run: () => Promise<unknown>): Promise<{

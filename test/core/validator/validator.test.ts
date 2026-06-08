@@ -1,23 +1,47 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
+import { dirname, isAbsolute, relative, resolve } from 'node:path'
 import { describe, it } from 'node:test'
+import { fileURLToPath } from 'node:url'
 import { parseSpecification } from '../../../src/core/parser.ts'
 import { validateSpecification } from '../../../src/core/validator.ts'
-import { fixturePath } from '../../helper.ts'
 
-async function parseSpecificationFile(path: string): Promise<unknown> {
-  const source = await readFile(path, 'utf8')
-  return parseSpecification(source)
+const basePath = fileURLToPath(import.meta.url)
+const baseDirectory = dirname(basePath)
+
+async function readFixtureFile(relativePath: string) {
+  return readFile(resolveFixtureFilePath(relativePath), 'utf8')
+}
+
+function resolveFixtureFilePath(relativePath: string) {
+  if (!relativePath.startsWith('fixtures/')) {
+    throw new Error('fixture path must start with fixtures/')
+  }
+
+  const resolvedPath = resolve(baseDirectory, relativePath)
+  const pathFromBase = relative(baseDirectory, resolvedPath)
+
+  if (
+    pathFromBase === '' ||
+    pathFromBase.startsWith('..') ||
+    isAbsolute(pathFromBase)
+  ) {
+    throw new Error('fixture path must stay under the test directory')
+  }
+
+  return resolvedPath
+}
+
+async function parseSpecificationFixture(
+  relativePath: string
+): Promise<unknown> {
+  return parseSpecification(await readFixtureFile(relativePath))
 }
 
 const validateFixture = async (spec: string) =>
-  validateSpecification(
-    await parseSpecificationFile(fixturePath(import.meta.url, spec)),
-    {
-      loadOpenApiSource: source =>
-        readFile(fixturePath(import.meta.url, source), 'utf8')
-    }
-  )
+  validateSpecification(await parseSpecificationFixture(`fixtures/${spec}`), {
+    loadOpenApiSource: source => readFixtureFile(`fixtures/${source}`)
+  })
 
 const assertInvalidFixture = async (spec: string, pattern: RegExp) => {
   const result = await validateFixture(spec)
@@ -32,26 +56,19 @@ const assertInvalidFixture = async (spec: string, pattern: RegExp) => {
 describe('validator', () => {
   describe('parsing', () => {
     it('parses the customer and order YAML fixture from the Data Sketch example', async () => {
-      await parseSpecificationFile(
-        fixturePath(import.meta.url, 'online-shop-minimal.valid.yaml')
-      )
+      await parseSpecificationFixture('fixtures/online-shop-minimal.valid.yaml')
       assert.ok(true)
     })
 
     it('parses the customer and order JSON fixture from the Data Sketch example', async () => {
-      await parseSpecificationFile(
-        fixturePath(import.meta.url, 'online-shop-minimal.valid.json')
-      )
+      await parseSpecificationFixture('fixtures/online-shop-minimal.valid.json')
       assert.ok(true)
     })
 
     it('reports an online shopping fixture with invalid YAML syntax', async () => {
       await assert.rejects(
-        parseSpecificationFile(
-          fixturePath(
-            import.meta.url,
-            'online-shop-invalid-syntax.invalid.yaml'
-          )
+        parseSpecificationFixture(
+          'fixtures/online-shop-invalid-syntax.invalid.yaml'
         ),
         /Failed to parse/
       )
@@ -417,7 +434,7 @@ describe('validator', () => {
     it('requires an OpenAPI source loader when sources.openapi is declared', async () => {
       const fixture = 'online-shop-sources-openapi-cwd-file.valid.yaml'
       const result = await validateSpecification(
-        await parseSpecificationFile(fixturePath(import.meta.url, fixture))
+        await parseSpecificationFixture(`fixtures/${fixture}`)
       )
 
       assert.equal(result.isValid, false)

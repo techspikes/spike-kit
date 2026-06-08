@@ -1,23 +1,50 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { closeSync, openSync } from 'node:fs'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { createRequire } from 'node:module'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import {
+  dirname,
+  isAbsolute,
+  relative,
+  resolve as resolvePath
+} from 'node:path'
 import { describe, it } from 'node:test'
+import { fileURLToPath } from 'node:url'
+import {
+  createTemporaryDirectory,
+  readTemporaryFile,
+  removeTemporaryDirectories
+} from './helper.ts'
 
 const require = createRequire(import.meta.url)
 const packageJson = require('../package.json') as { version: string }
-const cliPath = join(process.cwd(), 'dist', 'cli.js')
-const checkFixturePath = join(
-  process.cwd(),
-  'test',
-  'commands',
+const basePath = fileURLToPath(import.meta.url)
+const baseDirectory = dirname(basePath)
+const cliPath = resolvePath(process.cwd(), 'dist', 'cli.js')
+const checkFixturePath = resolveCommandFixtureFilePath(
   'check',
-  'fixtures',
-  'online-shop-minimal.valid.yaml'
+  'fixtures/online-shop-minimal.valid.yaml'
 )
+
+function resolveCommandFixtureFilePath(command: string, relativePath: string) {
+  if (!relativePath.startsWith('fixtures/')) {
+    throw new Error('fixture path must start with fixtures/')
+  }
+
+  const fixtureDirectory = resolvePath(baseDirectory, 'commands', command)
+  const resolvedPath = resolvePath(fixtureDirectory, relativePath)
+  const pathFromFixtureDirectory = relative(fixtureDirectory, resolvedPath)
+
+  if (
+    pathFromFixtureDirectory === '' ||
+    pathFromFixtureDirectory.startsWith('..') ||
+    isAbsolute(pathFromFixtureDirectory)
+  ) {
+    throw new Error('fixture path must stay under the command test directory')
+  }
+
+  return resolvedPath
+}
 
 export function runCli(
   file: string,
@@ -26,9 +53,13 @@ export function runCli(
 ) {
   return new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
     void (async () => {
-      const directory = await mkdtemp(join(tmpdir(), 'shot-cli-'))
-      const stdoutPath = join(directory, 'stdout')
-      const stderrPath = join(directory, 'stderr')
+      const temporaryDirectories: string[] = []
+      const directory = await createTemporaryDirectory(
+        'shot-cli-',
+        temporaryDirectories
+      )
+      const stdoutPath = resolvePath(directory, 'stdout')
+      const stderrPath = resolvePath(directory, 'stderr')
       const stdoutFd = openSync(stdoutPath, 'w')
       const stderrFd = openSync(stderrPath, 'w')
       let closed = false
@@ -50,9 +81,9 @@ export function runCli(
       child.on('close', code => {
         void (async () => {
           closeResources()
-          const stdout = await readFile(stdoutPath, 'utf8')
-          const stderr = await readFile(stderrPath, 'utf8')
-          await rm(directory, { recursive: true, force: true })
+          const stdout = await readTemporaryFile(stdoutPath)
+          const stderr = await readTemporaryFile(stderrPath)
+          await removeTemporaryDirectories(temporaryDirectories)
           if (code === 0) {
             resolve({ stdout, stderr })
           } else {

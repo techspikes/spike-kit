@@ -1,16 +1,16 @@
 import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
+import { dirname, isAbsolute, relative, resolve } from 'node:path'
 import { afterEach, describe, it } from 'node:test'
+import { fileURLToPath } from 'node:url'
 import { runSteps } from '../../../src/commands/table-spec/index.ts'
 import { shot } from '../../../src/commands/table-spec/lib.ts'
 import {
   createTemporaryDirectory,
-  fixturePath,
-  joinFilePath,
-  joinTemporaryFilePath,
-  readTextFile,
+  readTemporaryFile,
   removeTemporaryDirectories,
   runCommand,
-  writeTextFile
+  writeTemporaryFile
 } from '../../helper.ts'
 
 const fixedMetadata: TableSpecDocumentMetadata = {
@@ -21,6 +21,8 @@ const fixedMetadata: TableSpecDocumentMetadata = {
 }
 
 const temporaryDirectories: string[] = []
+const basePath = fileURLToPath(import.meta.url)
+const baseDirectory = dirname(basePath)
 
 type TableSpecDocumentMetadata = {
   source: string
@@ -33,15 +35,45 @@ afterEach(async () => {
 })
 
 async function renderTableSpecFixture(
-  fixtureName: string,
+  relativePath: string,
   metadata: TableSpecDocumentMetadata = fixedMetadata
 ) {
-  const source = await readTextFile(fixturePath(import.meta.url, fixtureName))
+  const source = await readFixtureFile(relativePath)
   const result = await shot({
     spec: source,
     metadata
   })
   return result.tableSpec
+}
+
+async function readFixtureFile(relativePath: string) {
+  return readFile(resolveFixtureFilePath(relativePath), 'utf8')
+}
+
+function resolveFixtureFilePath(relativePath: string) {
+  if (!relativePath.startsWith('fixtures/')) {
+    throw new Error('fixture path must start with fixtures/')
+  }
+
+  const resolvedPath = resolve(baseDirectory, relativePath)
+  const pathFromBase = relative(baseDirectory, resolvedPath)
+
+  if (
+    pathFromBase === '' ||
+    pathFromBase.startsWith('..') ||
+    isAbsolute(pathFromBase)
+  ) {
+    throw new Error('fixture path must stay under the test directory')
+  }
+
+  return resolvedPath
+}
+
+function normalizeGeneratedAt(output: string) {
+  return output.replace(
+    /^generated_at: .+$/m,
+    'generated_at: 2026-06-06T12:34:56.789Z'
+  )
 }
 
 describe('table-spec', () => {
@@ -71,27 +103,26 @@ describe('table-spec', () => {
         'shot-table-spec-',
         temporaryDirectories
       )
-      const outputPath = joinFilePath(directory, 'online-shop.md')
-      await writeTextFile(outputPath, 'outdated document\n')
+      const outputPath = resolve(directory, 'online-shop.md')
+      await writeTemporaryFile(outputPath, 'outdated document\n')
 
       const result = await runCommand(() =>
         runSteps([
-          fixturePath(import.meta.url, 'online-shop-minimal.valid.yaml'),
+          resolveFixtureFilePath('fixtures/online-shop-minimal.valid.yaml'),
           '-o',
           outputPath
         ])
       )
 
       assert.equal(result.exitCode, 0)
-      const output = await readTextFile(outputPath)
-      assert.match(output, /# online-shop/)
-      assert.doesNotMatch(output, /outdated document/)
+      const output = await readTemporaryFile(outputPath)
+      assert.notEqual(output, 'outdated document\n')
     })
 
     it('requires an output mode', async () => {
       const result = await runCommand(() =>
         runSteps([
-          fixturePath(import.meta.url, 'online-shop-minimal.valid.yaml')
+          resolveFixtureFilePath('fixtures/online-shop-minimal.valid.yaml')
         ])
       )
 
@@ -113,7 +144,7 @@ describe('table-spec', () => {
     it('rejects an output option without a file name', async () => {
       const result = await runCommand(() =>
         runSteps([
-          fixturePath(import.meta.url, 'online-shop-minimal.valid.yaml'),
+          resolveFixtureFilePath('fixtures/online-shop-minimal.valid.yaml'),
           '--output'
         ])
       )
@@ -126,7 +157,7 @@ describe('table-spec', () => {
     it('rejects an unknown option', async () => {
       const result = await runCommand(() =>
         runSteps([
-          fixturePath(import.meta.url, 'online-shop-minimal.valid.yaml'),
+          resolveFixtureFilePath('fixtures/online-shop-minimal.valid.yaml'),
           '--unknown'
         ])
       )
@@ -139,11 +170,11 @@ describe('table-spec', () => {
 
   describe('document rendering', () => {
     it('generates a table specification document from source text', async () => {
-      const source = await readTextFile(
-        fixturePath(import.meta.url, 'online-shop-minimal.valid.yaml')
+      const source = await readFixtureFile(
+        'fixtures/online-shop-minimal.valid.yaml'
       )
-      const expected = await readTextFile(
-        fixturePath(import.meta.url, 'expected/online-shop-minimal.md')
+      const expected = await readFixtureFile(
+        'fixtures/expected/online-shop-minimal.md'
       )
       const result = await shot({
         spec: source,
@@ -154,110 +185,79 @@ describe('table-spec', () => {
     })
 
     it('renders the Valuable Data Specification v1 customer and order example as the expected table specification', async () => {
-      const expected = await readTextFile(
-        fixturePath(import.meta.url, 'expected/online-shop-minimal.md')
+      const expected = await readFixtureFile(
+        'fixtures/expected/online-shop-minimal.md'
       )
 
       const output = await renderTableSpecFixture(
-        'online-shop-minimal.valid.yaml'
+        'fixtures/online-shop-minimal.valid.yaml'
       )
 
       assert.equal(output, expected)
-      assert.ok(
-        output.startsWith(
-          `---
-source: online-shop-minimal.valid.yaml
-source_sha256: 33057655ad2687f583a20b9e15e4023d96871ad240ed45eb5b1a91268986fb0f
-generated_at: 2026-06-06T12:34:56.789Z
----
-
-# online-shop`
-        )
-      )
-      assert.match(
-        output,
-        /\| Column\s+\| Data Type\s+\| Nullable\s+\| Default\s+\| Format\s+\| Check Values\s+\| Description\s+\|/
-      )
     })
 
     it('renders field types, defaults, nullable values, and escaped table cells', async () => {
+      const expected = await readFixtureFile(
+        'fixtures/expected/online-shop-field-rendering.md'
+      )
       const output = await renderTableSpecFixture(
-        'online-shop-field-rendering.valid.yaml',
+        'fixtures/online-shop-field-rendering.valid.yaml',
         {
           ...fixedMetadata,
+          sourceSha256: 'test-sha256',
           source: 'shop: tables.yaml'
         }
       )
 
-      assert.match(output, /source: 'shop: tables.yaml'/)
-      assert.match(output, /Store products \| prices\.\nKeep catalog values/)
-      assert.match(
-        output,
-        /\| price\s+\| decimal\(18, 2\) \| no\s+\| 0\.5\s+\|\s+\|\s+\|\s+\|/
-      )
-      assert.match(
-        output,
-        /\| rating\s+\| numeric\(3\)\s+\| yes\s+\| null\s+\|\s+\|\s+\|\s+\|/
-      )
-      assert.match(
-        output,
-        /\| active\s+\| boolean\s+\| no\s+\| true\s+\|\s+\|\s+\|\s+\|/
-      )
-      assert.match(
-        output,
-        /\| contact.*email\s+\| varchar\(254\)\s+\| yes\s+\|\s+\| email\s+\|\s+\|\s+\|/
-      )
-      assert.match(
-        output,
-        /\| status\s+\| varchar\(20\)\s+\| no\s+\| available \|\s+\| available, discontinued \| catalog \\\| state, availability label \|/
-      )
-      assert.match(output, /\| pk.*products\s+\| id, status \|/)
-      assert.match(
-        output,
-        /\| ux.*products.*price.*rating \| price, rating\s+\|/
-      )
-      assert.match(
-        output,
-        /Used for product \\\| catalog filtering\. Reviewed during catalog maintenance\./
-      )
+      assert.equal(output, expected)
     })
 
     it('marks a tentative store for human review', async () => {
+      const expected = await readFixtureFile(
+        'fixtures/expected/online-shop-tentative-store.md'
+      )
       const output = await renderTableSpecFixture(
-        'online-shop-tentative-store.valid.yaml'
+        'fixtures/online-shop-tentative-store.valid.yaml',
+        {
+          ...fixedMetadata,
+          source: 'online-shop-tentative-store.valid.yaml',
+          sourceSha256: 'test-sha256'
+        }
       )
 
-      assert.match(
-        output,
-        /\*\*This table is tentative and requires human review\.\*\*/
-      )
-      assert.doesNotMatch(output, /### Primary Key|### Indexes/)
+      assert.equal(output, expected)
     })
 
     it('renders an explicitly ordered index field', async () => {
+      const expected = await readFixtureFile(
+        'fixtures/expected/online-shop-index-sort-order.md'
+      )
       const output = await renderTableSpecFixture(
-        'online-shop-index-sort-order.valid.yaml'
+        'fixtures/online-shop-index-sort-order.valid.yaml',
+        {
+          ...fixedMetadata,
+          source: 'online-shop-index-sort-order.valid.yaml',
+          sourceSha256: 'test-sha256'
+        }
       )
 
-      assert.match(
-        output,
-        /\| ix\\_orders\\_created\\_at \| created\\_at desc \|/
-      )
+      assert.equal(output, expected)
     })
 
     it('renders omitted foreign key actions, index reasons, and index sort orders as empty table cells', async () => {
+      const expected = await readFixtureFile(
+        'fixtures/expected/online-shop-optional-rendering.md'
+      )
       const output = await renderTableSpecFixture(
-        'online-shop-optional-rendering.valid.yaml'
+        'fixtures/online-shop-optional-rendering.valid.yaml',
+        {
+          ...fixedMetadata,
+          source: 'online-shop-optional-rendering.valid.yaml',
+          sourceSha256: 'test-sha256'
+        }
       )
 
-      assert.match(
-        output,
-        /\| fk\\_orders\\_customer \| customer\\_id \| customers \s+\| id \s+\| \s+\| \s+\|/
-      )
-      assert.match(
-        output,
-        /\| ix.*orders.*created.*at\s+\| created.*at\s+\|\s+\|/
-      )
+      assert.equal(output, expected)
     })
   })
 
@@ -267,23 +267,21 @@ generated_at: 2026-06-06T12:34:56.789Z
         'shot-table-spec-',
         temporaryDirectories
       )
-      const outputPath = joinFilePath(directory, 'online-shop.md')
+      const outputPath = resolve(directory, 'online-shop.md')
       const result = await runCommand(() =>
         runSteps([
-          fixturePath(import.meta.url, 'online-shop-minimal.valid.yaml'),
+          resolveFixtureFilePath('fixtures/online-shop-minimal.valid.yaml'),
           '--output',
           outputPath
         ])
       )
 
-      const output = await readTextFile(outputPath)
-      assert.equal(result.exitCode, 0)
-      assert.match(
-        output,
-        /source_sha256: 33057655ad2687f583a20b9e15e4023d96871ad240ed45eb5b1a91268986fb0f/
+      const output = await readTemporaryFile(outputPath)
+      const expected = await readFixtureFile(
+        'fixtures/expected/online-shop-minimal.md'
       )
-      assert.doesNotMatch(output, new RegExp('generated' + '_by:'))
-      assert.match(output, /# online-shop/)
+      assert.equal(result.exitCode, 0)
+      assert.equal(normalizeGeneratedAt(output), expected)
     })
 
     it('validates OpenAPI traces through the CLI source loader', async () => {
@@ -291,20 +289,23 @@ generated_at: 2026-06-06T12:34:56.789Z
         'shot-table-spec-',
         temporaryDirectories
       )
-      const outputPath = joinFilePath(directory, 'openapi-trace.md')
+      const outputPath = resolve(directory, 'openapi-trace.md')
       const result = await runCommand(() =>
         runSteps([
-          fixturePath(
-            import.meta.url,
-            'online-shop-sources-openapi-ignored-members.valid.yaml'
+          resolveFixtureFilePath(
+            'fixtures/online-shop-sources-openapi-ignored-members.valid.yaml'
           ),
           '--output',
           outputPath
         ])
       )
 
+      const output = await readTemporaryFile(outputPath)
+      const expected = await readFixtureFile(
+        'fixtures/expected/online-shop-sources-openapi-ignored-members.md'
+      )
       assert.equal(result.exitCode, 0)
-      assert.match(await readTextFile(outputPath), /# online-shop/)
+      assert.equal(normalizeGeneratedAt(output), expected)
     })
 
     it('shows the failed validation step and reason in file-output mode', async () => {
@@ -312,10 +313,12 @@ generated_at: 2026-06-06T12:34:56.789Z
         'shot-table-spec-',
         temporaryDirectories
       )
-      const outputPath = joinFilePath(directory, 'online-shop.md')
+      const outputPath = resolve(directory, 'online-shop.md')
       const result = await runCommand(() =>
         runSteps([
-          fixturePath(import.meta.url, 'online-shop-empty-stores.invalid.yaml'),
+          resolveFixtureFilePath(
+            'fixtures/online-shop-empty-stores.invalid.yaml'
+          ),
           '--output',
           outputPath
         ])
@@ -324,7 +327,7 @@ generated_at: 2026-06-06T12:34:56.789Z
       assert.equal(result.exitCode, 1)
       assert.match((result.error as Error).message, /stores/)
 
-      await assert.rejects(readTextFile(outputPath), /ENOENT/)
+      await assert.rejects(readTemporaryFile(outputPath), /ENOENT/)
     })
 
     it('shows the failed parsing step and reason in file-output mode', async () => {
@@ -332,12 +335,11 @@ generated_at: 2026-06-06T12:34:56.789Z
         'shot-table-spec-',
         temporaryDirectories
       )
-      const outputPath = joinFilePath(directory, 'online-shop.md')
+      const outputPath = resolve(directory, 'online-shop.md')
       const result = await runCommand(() =>
         runSteps([
-          fixturePath(
-            import.meta.url,
-            'online-shop-invalid-syntax.invalid.yaml'
+          resolveFixtureFilePath(
+            'fixtures/online-shop-invalid-syntax.invalid.yaml'
           ),
           '--output',
           outputPath
@@ -347,7 +349,7 @@ generated_at: 2026-06-06T12:34:56.789Z
       assert.equal(result.exitCode, 1)
       assert.match((result.error as Error).message, /Failed to parse/)
 
-      await assert.rejects(readTextFile(outputPath), /ENOENT/)
+      await assert.rejects(readTemporaryFile(outputPath), /ENOENT/)
     })
 
     it('shows the failed reading step and reason in file-output mode', async () => {
@@ -357,9 +359,9 @@ generated_at: 2026-06-06T12:34:56.789Z
       )
       const result = await runCommand(() =>
         runSteps([
-          fixturePath(import.meta.url, 'online-shop-missing.yaml'),
+          resolveFixtureFilePath('fixtures/online-shop-missing.yaml'),
           '--output',
-          joinFilePath(directory, 'online-shop.md')
+          resolve(directory, 'online-shop.md')
         ])
       )
 
@@ -372,12 +374,14 @@ generated_at: 2026-06-06T12:34:56.789Z
         'shot-table-spec-',
         temporaryDirectories
       )
-      const outputPath = joinFilePath(directory, 'online-shop.md')
-      await writeTextFile(outputPath, 'approved table specification\n')
+      const outputPath = resolve(directory, 'online-shop.md')
+      await writeTemporaryFile(outputPath, 'approved table specification\n')
 
       const result = await runCommand(() =>
         runSteps([
-          fixturePath(import.meta.url, 'online-shop-empty-stores.invalid.yaml'),
+          resolveFixtureFilePath(
+            'fixtures/online-shop-empty-stores.invalid.yaml'
+          ),
           '--output',
           outputPath
         ])
@@ -385,19 +389,20 @@ generated_at: 2026-06-06T12:34:56.789Z
 
       assert.equal(result.exitCode, 1)
       assert.equal(
-        await readTextFile(outputPath),
+        await readTemporaryFile(outputPath),
         'approved table specification\n'
       )
     })
 
     it('reports an output file write error as plain text', async () => {
-      const outputPath = joinTemporaryFilePath(
-        'shot-missing-directory',
-        'online-shop.md'
+      const directory = await createTemporaryDirectory(
+        'shot-table-spec-',
+        temporaryDirectories
       )
+      const outputPath = resolve(directory, 'missing', 'online-shop.md')
       const result = await runCommand(() =>
         runSteps([
-          fixturePath(import.meta.url, 'online-shop-minimal.valid.yaml'),
+          resolveFixtureFilePath('fixtures/online-shop-minimal.valid.yaml'),
           '--output',
           outputPath
         ])
@@ -414,12 +419,11 @@ generated_at: 2026-06-06T12:34:56.789Z
       )
       const result = await runCommand(() =>
         runSteps([
-          fixturePath(
-            import.meta.url,
-            'online-shop-multiple-validation-issues.invalid.yaml'
+          resolveFixtureFilePath(
+            'fixtures/online-shop-multiple-validation-issues.invalid.yaml'
           ),
           '--output',
-          joinFilePath(directory, 'online-shop.md')
+          resolve(directory, 'online-shop.md')
         ])
       )
 

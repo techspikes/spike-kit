@@ -1,13 +1,47 @@
 import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
+import { dirname, isAbsolute, relative, resolve } from 'node:path'
 import { describe, it } from 'node:test'
+import { fileURLToPath } from 'node:url'
 import { runSteps } from '../../../src/commands/check/index.ts'
 import { shot } from '../../../src/commands/check/lib.ts'
-import { fixturePath, readTextFile, runCommand } from '../../helper.ts'
+import { runCommand } from '../../helper.ts'
+
+const basePath = fileURLToPath(import.meta.url)
+const baseDirectory = dirname(basePath)
+
+async function readFixtureFile(relativePath: string) {
+  return readFile(resolveFixtureFilePath(relativePath), 'utf8')
+}
+
+function resolveFixtureFilePath(relativePath: string) {
+  if (!relativePath.startsWith('fixtures/')) {
+    throw new Error('fixture path must start with fixtures/')
+  }
+
+  const resolvedPath = resolve(baseDirectory, relativePath)
+  const pathFromBase = relative(baseDirectory, resolvedPath)
+
+  if (
+    pathFromBase === '' ||
+    pathFromBase.startsWith('..') ||
+    isAbsolute(pathFromBase)
+  ) {
+    throw new Error('fixture path must stay under the test directory')
+  }
+
+  return resolvedPath
+}
+
+function issueMessages(result: Awaited<ReturnType<typeof shot>>) {
+  if (result.isValid) throw new Error('fixture must be invalid')
+  return result.issues.map(issue => issue.message).join('\n')
+}
 
 describe('check', () => {
   it('validates Data Sketch source text without a source path', async () => {
-    const spec = await readTextFile(
-      fixturePath(import.meta.url, 'online-shop-minimal.valid.yaml')
+    const spec = await readFixtureFile(
+      'fixtures/online-shop-minimal.valid.yaml'
     )
 
     const result = await shot({
@@ -18,11 +52,8 @@ describe('check', () => {
   })
 
   it('validates OpenAPI traces through a source loader callback', async () => {
-    const spec = await readTextFile(
-      fixturePath(
-        import.meta.url,
-        'online-shop-sources-openapi-ignored-members.valid.yaml'
-      )
+    const spec = await readFixtureFile(
+      'fixtures/online-shop-sources-openapi-ignored-members.valid.yaml'
     )
 
     const openApiSources: string[] = []
@@ -31,7 +62,7 @@ describe('check', () => {
       sources: {
         openapi: async openApiSource => {
           openApiSources.push(openApiSource)
-          return readTextFile(fixturePath(import.meta.url, openApiSource))
+          return readFixtureFile(`fixtures/${openApiSource}`)
         }
       }
     })
@@ -40,20 +71,24 @@ describe('check', () => {
     assert.deepEqual(openApiSources, ['openapi/openapi-ignored-members.yaml'])
   })
 
-  it('exits successfully for the customer and order fixture from the Data Sketch example', async () => {
-    const result = await runCommand(() =>
-      runSteps([fixturePath(import.meta.url, 'online-shop-minimal.valid.yaml')])
-    )
+  it('validates a fixture with OpenAPI trace validation', async () => {
+    const result = await shot({
+      spec: await readFixtureFile(
+        'fixtures/online-shop-sources-openapi-ignored-members.valid.yaml'
+      ),
+      sources: {
+        openapi: source => readFixtureFile(`fixtures/${source}`)
+      }
+    })
 
-    assert.equal(result.exitCode, 0)
+    assert.deepEqual(result, { isValid: true })
   })
 
-  it('exits successfully for a fixture with OpenAPI trace validation', async () => {
+  it('loads an OpenAPI source relative to the CLI input file path', async () => {
     const result = await runCommand(() =>
       runSteps([
-        fixturePath(
-          import.meta.url,
-          'online-shop-sources-openapi-ignored-members.valid.yaml'
+        resolveFixtureFilePath(
+          'fixtures/online-shop-sources-openapi-ignored-members.valid.yaml'
         )
       ])
     )
@@ -61,23 +96,34 @@ describe('check', () => {
     assert.equal(result.exitCode, 0)
   })
 
-  it('exits non-zero for an online shopping fixture with no stores', async () => {
-    const result = await runCommand(() =>
-      runSteps([
-        fixturePath(import.meta.url, 'online-shop-empty-stores.invalid.yaml')
-      ])
-    )
+  it('rejects an online shopping fixture with no stores', async () => {
+    const result = await shot({
+      spec: await readFixtureFile(
+        'fixtures/online-shop-empty-stores.invalid.yaml'
+      )
+    })
 
-    assert.equal(result.exitCode, 1)
-    assert.match((result.error as Error).message, /stores/)
+    assert.match(issueMessages(result), /stores/)
   })
 
   it('writes multiple validation issues without a reason box', async () => {
+    const result = await shot({
+      spec: await readFixtureFile(
+        'fixtures/online-shop-multiple-validation-issues.invalid.yaml'
+      )
+    })
+
+    const messages = issueMessages(result)
+    assert.match(messages, /data-sketch/)
+    assert.match(messages, /info\.name/)
+    assert.match(messages, /stores/)
+  })
+
+  it('reports validation issues in CLI mode', async () => {
     const result = await runCommand(() =>
       runSteps([
-        fixturePath(
-          import.meta.url,
-          'online-shop-multiple-validation-issues.invalid.yaml'
+        resolveFixtureFilePath(
+          'fixtures/online-shop-multiple-validation-issues.invalid.yaml'
         )
       ])
     )
@@ -90,7 +136,7 @@ describe('check', () => {
 
   it('shows the failed reading step and reason for a missing file', async () => {
     const result = await runCommand(() =>
-      runSteps([fixturePath(import.meta.url, 'online-shop-missing.yaml')])
+      runSteps([resolveFixtureFilePath('fixtures/online-shop-missing.yaml')])
     )
 
     assert.equal(result.exitCode, 1)

@@ -50,26 +50,50 @@ function assertTemporaryPath(path: string) {
   throw new Error(`temporary file path must be under ${temporaryRoot}`)
 }
 
-export async function runCommand(run: () => Promise<unknown>): Promise<{
-  exitCode: number
-  stdout: string
-  stderr: string
-  error?: unknown
-}> {
+type ExitStatus =
+  | {
+      isFailed: false
+      stdout: string
+      error?: undefined
+    }
+  | { isFailed: true; stdout: string; stderr: string; error: Error }
+
+export async function runCommand(
+  run: () => Promise<unknown>
+): Promise<ExitStatus> {
   const loggerCapture = captureLoggerForTest()
   try {
-    const exitCode = await run()
+    const result = await run()
+    const stdout = loggerCapture.stdout()
+    const stderr = loggerCapture.stderr()
+
+    if (typeof result === 'number' && result !== 0) {
+      return {
+        isFailed: true,
+        stdout,
+        stderr,
+        error: new Error(`Command failed with status ${result}`)
+      }
+    }
+    if (stderr !== '') {
+      return {
+        isFailed: true,
+        stdout,
+        stderr,
+        error: new Error('Command wrote to stderr')
+      }
+    }
+
     return {
-      exitCode: typeof exitCode === 'number' ? exitCode : 0,
-      stdout: loggerCapture.stdout(),
-      stderr: loggerCapture.stderr()
+      isFailed: false,
+      stdout
     }
   } catch (error) {
     return {
-      exitCode: 1,
+      isFailed: true,
       stdout: loggerCapture.stdout(),
       stderr: loggerCapture.stderr(),
-      error
+      error: error as Error
     }
   } finally {
     loggerCapture.restore()

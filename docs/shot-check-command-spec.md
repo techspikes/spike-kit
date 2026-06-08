@@ -18,21 +18,16 @@ shot check -h
 - The command exits with status `0` after successful validation.
 - The command exits with status `1` when reading, parsing, argument validation, or Data Sketch validation fails.
 
-## Progress Output
+## Logging
 
 The command is non-interactive and does not prompt for input.
 
-During validation, progress and final status messages are written to standard output:
+Successful validation does not write progress or final status messages.
 
-```text
-Data Sketch read
-Validating Data Sketch
-Data Sketch is valid
-```
+When reading fails, the failed step and reason are logged to standard error.
+When parsing fails, the failed validation step and parse error are logged to standard error.
 
-When reading or parsing fails, the failed step and the reason are written as plain text to standard output.
-
-When Data Sketch validation fails, the failed validation step is written to standard output, followed by validation issue messages. Multiple validation issues are written one per line.
+When Data Sketch validation fails, the failed validation step is logged to standard error, followed by validation issue messages. Multiple validation issues are written one per line.
 
 Argument errors write `Error: <reason>`, a blank line, and usage text to standard error.
 
@@ -40,7 +35,7 @@ Argument errors write `Error: <reason>`, a blank line, and usage text to standar
 
 The command validates the parsed document as Valuable Data Specification v1. Trace validation is part of Data Sketch validation when the document requests it.
 
-Successful validation does not write the input document or a transformed document. It reports only progress and final status.
+Successful validation does not write the input document or a transformed document.
 
 Validation issue messages include the issue path and reason. The issue format matches the validator's user-facing issue messages.
 
@@ -68,13 +63,7 @@ stores:
         nullable: false
 ```
 
-Expected successful progress output includes:
-
-```text
-Data Sketch read
-Validating Data Sketch
-Data Sketch is valid
-```
+Expected successful output is empty.
 
 ## Invalid Document Example
 

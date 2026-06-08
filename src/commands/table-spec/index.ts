@@ -20,13 +20,9 @@ export async function runSteps(args: string[]) {
 
   if (options.isHelp) return
 
-  logger.info('Table specification generation')
-
   const spec = await stepReadSpec(options.path)
   const tableSpec = await stepCreateTableSpec(options.path, spec)
   await stepWriteOutput(options.outputPath, tableSpec)
-
-  logger.info('Table specification generated')
 }
 
 function stepParseArgs(args: string[]): ParsedArgs {
@@ -81,7 +77,6 @@ function stepParseArgs(args: string[]): ParsedArgs {
 async function stepReadSpec(path: string) {
   try {
     const spec = await readFile(path, 'utf-8')
-    logger.info('Data Sketch read')
     return spec
   } catch (error) {
     logger.error('Reading Data Sketch failed')
@@ -107,9 +102,7 @@ async function stepCreateTableSpec(path: string, spec: string) {
         generatedAt: new Date().toISOString()
       }
     })
-    logger.info('Validating Data Sketch')
     errorStep = 'Rendering table specification'
-    logger.info('Rendering table specification')
     return result.tableSpec
   } catch (error) {
     if ((error as Error).name === 'TableSpecValidationError') {
@@ -126,7 +119,6 @@ async function stepCreateTableSpec(path: string, spec: string) {
 async function stepWriteOutput(outputPath: string, tableSpec: string) {
   try {
     await writeFile(outputPath, tableSpec)
-    logger.info('Table specification written')
   } catch (error) {
     logger.error('Writing table specification failed')
     logger.error((error as Error).message)

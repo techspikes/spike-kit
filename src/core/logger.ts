@@ -59,7 +59,7 @@ function prettyStream(destination: NodeJS.WritableStream) {
   return pretty({
     colorize: true,
     destination,
-    ignore: 'pid,hostname'
+    ignore: 'time,level,pid,hostname'
   })
 }
 

@@ -87,7 +87,7 @@ describe('kysely-migration', () => {
     it('prints kysely-migration usage for --help', async () => {
       const result = await runKyselyMigrationCli(['--help'])
 
-      assert.equal(result.exitCode, 0)
+      assert.equal(result.isFailed, false)
       assert.match(kyselyMigrationCommand.usage, /--output/)
       assert.match(kyselyMigrationCommand.usage, /--previous-migration/)
       assert.match(kyselyMigrationCommand.usage, /-p/)
@@ -98,7 +98,7 @@ describe('kysely-migration', () => {
     it('prints kysely-migration usage for -h', async () => {
       const result = await runKyselyMigrationCli(['-h'])
 
-      assert.equal(result.exitCode, 0)
+      assert.equal(result.isFailed, false)
       assert.match(kyselyMigrationCommand.usage, /--output/)
       assert.match(kyselyMigrationCommand.usage, /--previous-migration/)
       assert.match(kyselyMigrationCommand.usage, /-p/)
@@ -109,8 +109,8 @@ describe('kysely-migration', () => {
     it('logs option errors without progress output', async () => {
       const result = await runKyselyMigrationCli([])
 
-      assert.equal(result.exitCode, 1)
-      assert.match((result.error as Error).message, /--output/)
+      assert.equal(result.isFailed, true)
+      assert.match(result.error.message, /--output/)
       assert.match(kyselyMigrationCommand.usage, /--output/)
     })
 
@@ -123,11 +123,8 @@ describe('kysely-migration', () => {
         'database.ts'
       ])
 
-      assert.equal(result.exitCode, 1)
-      assert.match(
-        (result.error as Error).message,
-        /--types-output must end with \.d\.ts/
-      )
+      assert.equal(result.isFailed, true)
+      assert.match(result.error.message, /--types-output must end with \.d\.ts/)
     })
 
     it('reports migration argument parse errors for unknown options', async () => {
@@ -138,8 +135,8 @@ describe('kysely-migration', () => {
         '--unknown'
       ])
 
-      assert.equal(result.exitCode, 1)
-      assert.match((result.error as Error).message, /Unknown option/)
+      assert.equal(result.isFailed, true)
+      assert.match(result.error.message, /Unknown option/)
       assert.match(kyselyMigrationCommand.usage, /Usage:/)
     })
   })
@@ -831,7 +828,7 @@ describe('kysely-migration', () => {
       const expectedSnapshot = await readJson(
         'snapshots/online-shop-initial.expected.json'
       )
-      const { exitCode } = await runKyselyMigrationCli([
+      const { isFailed } = await runKyselyMigrationCli([
         fixturePath(import.meta.url, 'online-shop-initial.valid.yaml'),
         '--output',
         migrationPath,
@@ -844,7 +841,7 @@ describe('kysely-migration', () => {
       const migrationGeneratedAt = readEmbeddedGeneratedAt(migration)
       const typesGeneratedAt = readEmbeddedGeneratedAt(types)
 
-      assert.equal(exitCode, 0)
+      assert.equal(isFailed, false)
       assert.deepEqual(parseEmbeddedSnapshot(migration), expectedSnapshot)
       assert.deepEqual(parseEmbeddedSnapshot(types), expectedSnapshot)
       assert.equal(migrationGeneratedAt, typesGeneratedAt)
@@ -859,7 +856,7 @@ describe('kysely-migration', () => {
         temporaryDirectories
       )
       const migrationPath = join(directory, 'openapi-trace.ts')
-      const { exitCode } = await runKyselyMigrationCli([
+      const { isFailed } = await runKyselyMigrationCli([
         fixturePath(
           import.meta.url,
           'online-shop-sources-openapi-ignored-members.valid.yaml'
@@ -868,7 +865,7 @@ describe('kysely-migration', () => {
         migrationPath
       ])
 
-      assert.equal(exitCode, 0)
+      assert.equal(isFailed, false)
       assert.match(await readFile(migrationPath, 'utf8'), /createTable/)
     })
 
@@ -890,7 +887,7 @@ describe('kysely-migration', () => {
       }
       await writeFile(previousMigrationPath, previousMigrationSource)
 
-      const { exitCode } = await runKyselyMigrationCli([
+      const { isFailed } = await runKyselyMigrationCli([
         fixturePath(
           import.meta.url,
           'online-shop-diff-customer-rename.valid.yaml'
@@ -905,7 +902,7 @@ describe('kysely-migration', () => {
       const migration = await readFile(diffMigrationPath, 'utf8')
       const types = await readFile(typesPath, 'utf8')
 
-      assert.equal(exitCode, 0)
+      assert.equal(isFailed, false)
       assert.deepEqual(parseEmbeddedSnapshot(migration), expectedSnapshot)
       assert.deepEqual(parseEmbeddedSnapshot(types), expectedSnapshot)
       assert.match(migration, /renameTo\("shop_customers"\)/)
@@ -935,7 +932,7 @@ describe('kysely-migration', () => {
         previousTypesPath
       ])
 
-      const { exitCode } = await runKyselyMigrationCli([
+      const { isFailed } = await runKyselyMigrationCli([
         fixturePath(
           import.meta.url,
           'online-shop-diff-customer-rename.valid.yaml'
@@ -947,7 +944,7 @@ describe('kysely-migration', () => {
       ])
       const migration = await readFile(diffMigrationPath, 'utf8')
 
-      assert.equal(exitCode, 0)
+      assert.equal(isFailed, false)
       assert.deepEqual(parseEmbeddedSnapshot(migration), expectedSnapshot)
       assert.match(migration, /renameTo\("shop_customers"\)/)
       assert.match(
@@ -963,7 +960,7 @@ describe('kysely-migration', () => {
       )
       const migrationPath = join(directory, 'initial.ts')
 
-      const { exitCode } = await runKyselyMigrationCli([
+      const { isFailed } = await runKyselyMigrationCli([
         fixturePath(import.meta.url, 'online-shop-initial.valid.yaml'),
         '--output',
         migrationPath,
@@ -971,7 +968,7 @@ describe('kysely-migration', () => {
       ])
       const files = await readdir(directory)
 
-      assert.equal(exitCode, 0)
+      assert.equal(isFailed, false)
       assert.equal(files.length, 1)
       assert.match(files[0], /^\d{4}-\d{2}-\d{2}T.*_initial\.ts$/)
     })
@@ -984,7 +981,7 @@ describe('kysely-migration', () => {
       const migrationPath = join(directory, 'initial.ts')
       const typesPath = join(directory, 'database.d.ts')
 
-      const { exitCode } = await runKyselyMigrationCli([
+      const { isFailed } = await runKyselyMigrationCli([
         fixturePath(import.meta.url, 'online-shop-initial.valid.yaml'),
         '--output',
         migrationPath,
@@ -993,7 +990,7 @@ describe('kysely-migration', () => {
         '--dry-run'
       ])
 
-      assert.equal(exitCode, 0)
+      assert.equal(isFailed, false)
       await assert.rejects(access(migrationPath))
       await assert.rejects(access(typesPath))
     })
@@ -1005,14 +1002,14 @@ describe('kysely-migration', () => {
       )
       const migrationPath = join(directory, 'initial.ts')
 
-      const { exitCode } = await runKyselyMigrationCli([
+      const { isFailed } = await runKyselyMigrationCli([
         fixturePath(import.meta.url, 'online-shop-tentative-store.valid.yaml'),
         '--output',
         migrationPath
       ])
       const migration = await readFile(migrationPath, 'utf8')
 
-      assert.equal(exitCode, 0)
+      assert.equal(isFailed, false)
       assert.doesNotMatch(migration, /order_drafts/)
     })
 
@@ -1023,7 +1020,7 @@ describe('kysely-migration', () => {
       )
       const migrationPath = join(directory, 'initial.ts')
 
-      const { exitCode } = await runKyselyMigrationCli([
+      const { isFailed } = await runKyselyMigrationCli([
         fixturePath(import.meta.url, 'online-shop-tentative-store.valid.yaml'),
         '--output',
         migrationPath,
@@ -1031,7 +1028,7 @@ describe('kysely-migration', () => {
       ])
       const migration = await readFile(migrationPath, 'utf8')
 
-      assert.equal(exitCode, 0)
+      assert.equal(isFailed, false)
       assert.match(migration, /order_drafts/)
     })
 
@@ -1042,14 +1039,14 @@ describe('kysely-migration', () => {
       )
       const migrationPath = join(directory, 'initial.ts')
 
-      const { exitCode } = await runKyselyMigrationCli([
+      const { isFailed } = await runKyselyMigrationCli([
         fixturePath(import.meta.url, 'online-shop-enum-warning.valid.yaml'),
         '--output',
         migrationPath
       ])
       const migration = await readFile(migrationPath, 'utf8')
 
-      assert.equal(exitCode, 0)
+      assert.equal(isFailed, false)
       assert.doesNotMatch(migration, /addCheckConstraint|ck_orders_status_enum/)
     })
 
@@ -1069,9 +1066,9 @@ describe('kysely-migration', () => {
         migrationPath
       ])
 
-      assert.equal(result.exitCode, 1)
+      assert.equal(result.isFailed, true)
       assert.match(
-        (result.error as Error).message,
+        result.error.message,
         /Ordered index fields are not supported/
       )
       await assert.rejects(access(migrationPath))
@@ -1093,8 +1090,9 @@ describe('kysely-migration', () => {
         migrationPath
       ])
 
+      assert.equal(result.isFailed, true)
       assert.match(
-        (result.error as Error).message,
+        result.error.message,
         /Column type is not supported by the kysely-migration command: products\.rating numeric\(3\)/
       )
       await assert.rejects(access(migrationPath))
@@ -1113,8 +1111,8 @@ describe('kysely-migration', () => {
         migrationPath
       ])
 
-      assert.equal(result.exitCode, 1)
-      assert.match((result.error as Error).message, /ENOENT/)
+      assert.equal(result.isFailed, true)
+      assert.match(result.error.message, /ENOENT/)
       await assert.rejects(access(migrationPath))
     })
 
@@ -1149,13 +1147,10 @@ describe('kysely-migration', () => {
         migrationPath
       ])
 
-      assert.equal(missingResult.exitCode, 1)
-      assert.match((missingResult.error as Error).message, /ENOENT/)
-      assert.equal(invalidResult.exitCode, 1)
-      assert.match(
-        (invalidResult.error as Error).message,
-        /DB Projection Snapshot/
-      )
+      assert.equal(missingResult.isFailed, true)
+      assert.match(missingResult.error.message, /ENOENT/)
+      assert.equal(invalidResult.isFailed, true)
+      assert.match(invalidResult.error.message, /DB Projection Snapshot/)
       await assert.rejects(access(migrationPath))
     })
 
@@ -1184,10 +1179,10 @@ describe('kysely-migration', () => {
         migrationPath
       ])
 
-      assert.equal(parseResult.exitCode, 1)
-      assert.match((parseResult.error as Error).message, /Failed to parse/)
-      assert.equal(validationResult.exitCode, 1)
-      assert.match((validationResult.error as Error).message, /stores/)
+      assert.equal(parseResult.isFailed, true)
+      assert.match(parseResult.error.message, /Failed to parse/)
+      assert.equal(validationResult.isFailed, true)
+      assert.match(validationResult.error.message, /stores/)
       await assert.rejects(access(migrationPath))
     })
 
@@ -1204,8 +1199,8 @@ describe('kysely-migration', () => {
         missingDirectoryPath
       ])
 
-      assert.equal(result.exitCode, 1)
-      assert.match((result.error as Error).message, /ENOENT/)
+      assert.equal(result.isFailed, true)
+      assert.match(result.error.message, /ENOENT/)
     })
 
     it('creates output directories explicitly in tests without relying on command directory creation', async () => {
@@ -1217,13 +1212,13 @@ describe('kysely-migration', () => {
       await mkdir(nested)
 
       const migrationPath = join(nested, 'initial.ts')
-      const { exitCode } = await runKyselyMigrationCli([
+      const { isFailed } = await runKyselyMigrationCli([
         fixturePath(import.meta.url, 'online-shop-initial.valid.yaml'),
         '-o',
         migrationPath
       ])
 
-      assert.equal(exitCode, 0)
+      assert.equal(isFailed, false)
       assert.match(await readFile(migrationPath, 'utf8'), /createTable/)
     })
   })

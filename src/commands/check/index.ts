@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { logger } from '../../core/logger.ts'
+import type { ShotOutput } from './lib.ts'
 import { shot } from './lib.ts'
 
 type ParsedArgs =
@@ -18,12 +19,8 @@ export async function runSteps(args: string[]) {
 
   if (options.isHelp) return
 
-  logger.info('Data Sketch validation')
-
   const spec = await stepReadSpec(options.path)
   await stepCheckDataSketch(options.path, spec)
-
-  logger.info('Data Sketch is valid')
 }
 
 function stepParseArgs(args: string[]): ParsedArgs {
@@ -72,7 +69,6 @@ function stepParseArgs(args: string[]): ParsedArgs {
 async function stepReadSpec(path: string) {
   try {
     const spec = await readFile(path, 'utf8')
-    logger.info('Data Sketch read')
     return spec
   } catch (error) {
     logger.error('Reading Data Sketch failed')
@@ -82,13 +78,21 @@ async function stepReadSpec(path: string) {
 }
 
 async function stepCheckDataSketch(path: string, spec: string) {
-  const output = await shot({
-    spec,
-    sources: {
-      openapi: (source: string) =>
-        readFile(resolve(dirname(path), source), 'utf8')
-    }
-  })
+  let output: ShotOutput
+
+  try {
+    output = await shot({
+      spec,
+      sources: {
+        openapi: (source: string) =>
+          readFile(resolve(dirname(path), source), 'utf8')
+      }
+    })
+  } catch (error) {
+    logger.error('Validating Data Sketch failed')
+    logger.error((error as Error).message)
+    throw new Error((error as Error).message)
+  }
 
   if (!output.isValid) {
     const message = output.issues.map(issue => issue.message).join('\n')
@@ -96,6 +100,4 @@ async function stepCheckDataSketch(path: string, spec: string) {
     logger.error(message)
     throw new Error(message)
   }
-
-  logger.info('Validating Data Sketch')
 }

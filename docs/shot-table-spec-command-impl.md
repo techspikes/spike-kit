@@ -11,16 +11,13 @@ Within the source tree, `src/commands/table-spec/index.ts` exports the CLI
 `runSteps(...)` function. `src/commands/table-spec/lib.ts` exports the
 low-level `shot(...)` helper used by focused document rendering tests.
 
-## Progress Output Implementation
+## Logging Implementation
 
-`shot table-spec --output` and `shot table-spec -o` use the shared pino logger for progress output:
+`shot table-spec --output` and `shot table-spec -o` use the shared pino logger only for help and error output:
 
-- `Table specification generation` is logged before file processing starts.
-- Info logs are used for successful file reads and writes.
-- Info logs are used for successful validation and rendering steps.
-- Warning logs are used for warning steps if a warning is introduced.
-- `Table specification generated` is logged after a successful file write.
-- Error logs are used for failed processing steps.
+- Help usage is logged to standard output.
+- Failed argument parsing, file reads, validation, rendering, and file writes are logged to standard error.
+- Successful conversion does not write progress or final status messages.
 
 The implementation does not use a note UI or a `Reason` box. Failure reasons and validation issues are logged as plain text.
 
@@ -34,3 +31,7 @@ Error: <reason>
 Usage:
 ...
 ```
+
+Read, validation, rendering, and write failures are logged through the shared
+pino logger as plain text. `runSteps(...)` catches no errors itself; failures
+propagate to the root CLI dispatcher, which returns exit status `1`.

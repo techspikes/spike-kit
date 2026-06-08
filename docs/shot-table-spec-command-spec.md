@@ -20,21 +20,13 @@ shot table-spec -h
 - The command exits with status `0` after successful conversion.
 - No partial output, including front matter, is written when an error occurs.
 
-## Progress Output
+## Logging
 
 The command is non-interactive and does not prompt for input.
 
-With `--output` or `-o`, progress and final status messages are written to standard output:
+With `--output` or `-o`, successful conversion writes only the generated Markdown file. It does not write progress or final status messages.
 
-```text
-Data Sketch read
-Validating Data Sketch
-Rendering table specification
-Table specification written
-Table specification generated
-```
-
-If an operation fails, the failed step and the reason are written as plain text to standard output.
+If an operation fails, the failed step and reason are logged to standard error.
 
 Argument errors write `Error: <reason>`, a blank line, and usage text to standard error.
 

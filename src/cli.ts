@@ -5,17 +5,10 @@ import { command as kyselyMigrationCommand } from './commands/kysely-migration/i
 import { runSteps as runTableSpecSteps } from './commands/table-spec/index.ts'
 import { logger } from './core/logger.ts'
 
-const REQUIRE = createRequire(import.meta.url)
-const PACKAGE_JSON = REQUIRE('../package.json') as { version: string }
+const require = createRequire(import.meta.url)
+const { version } = require('../package.json') as { version: string }
 
-type Command = {
-  name: string
-  summary: string
-  usage?: string
-  run(args: string[]): Promise<void>
-}
-
-const COMMANDS: Command[] = [
+const commands = [
   {
     name: 'check',
     summary: 'Validate a Valuable Data Specification v1 YAML or JSON file',
@@ -29,7 +22,7 @@ const COMMANDS: Command[] = [
   }
 ]
 
-const USAGE = [
+const usage = () => [
   'Usage:',
   '  shot check <file>',
   '  shot kysely-migration <file> --output <file>',
@@ -49,7 +42,7 @@ export async function main(argv = process.argv.slice(2)) {
   try {
     return await runMain(argv)
   } catch (error) {
-    logger.error(`Error: ${(error as Error).message}\n\n${USAGE}`)
+    logger.error(`Error: ${(error as Error).message}\n\n${usage()}`)
     return 1
   }
 }
@@ -57,18 +50,18 @@ export async function main(argv = process.argv.slice(2)) {
 async function runMain(argv: string[]) {
   const [subcommand, ...args] = argv
   if (subcommand === '--help' || subcommand === '-h') {
-    logger.info(USAGE)
+    logger.info(usage())
     return 0
   }
   if (subcommand === '--version' || subcommand === '-v') {
-    logger.info(PACKAGE_JSON.version)
+    logger.info(version)
     return 0
   }
   if (subcommand === undefined) {
     throw new Error('missing subcommand')
   }
 
-  const command = COMMANDS.find(command => command.name === subcommand)
+  const command = commands.find(command => command.name === subcommand)
   if (command === undefined) {
     throw new Error(`unknown subcommand "${subcommand}"`)
   }

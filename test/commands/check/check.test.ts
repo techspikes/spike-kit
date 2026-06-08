@@ -93,7 +93,8 @@ describe('check', () => {
       ])
     )
 
-    assert.equal(result.exitCode, 0)
+    assert.equal(result.isFailed, false)
+    assert.equal(result.stdout, '')
   })
 
   it('rejects an online shopping fixture with no stores', async () => {
@@ -128,10 +129,29 @@ describe('check', () => {
       ])
     )
 
-    assert.equal(result.exitCode, 1)
-    assert.match((result.error as Error).message, /data-sketch/)
-    assert.match((result.error as Error).message, /info\.name/)
-    assert.match((result.error as Error).message, /stores/)
+    assert.equal(result.isFailed, true)
+    assert.match(result.error.message, /data-sketch/)
+    assert.match(result.error.message, /info\.name/)
+    assert.match(result.error.message, /stores/)
+    assert.match(result.stderr, /Validating Data Sketch failed/)
+    assert.match(result.stderr, /data-sketch/)
+    assert.match(result.stderr, /info\.name/)
+    assert.match(result.stderr, /stores/)
+  })
+
+  it('reports parse failures in CLI mode', async () => {
+    const result = await runCommand(() =>
+      runSteps([
+        resolveFixtureFilePath(
+          'fixtures/online-shop-invalid-syntax.invalid.yaml'
+        )
+      ])
+    )
+
+    assert.equal(result.isFailed, true)
+    assert.match(result.error.message, /Failed to parse/)
+    assert.match(result.stderr, /Validating Data Sketch failed/)
+    assert.match(result.stderr, /Failed to parse/)
   })
 
   it('shows the failed reading step and reason for a missing file', async () => {
@@ -139,33 +159,41 @@ describe('check', () => {
       runSteps([resolveFixtureFilePath('fixtures/online-shop-missing.yaml')])
     )
 
-    assert.equal(result.exitCode, 1)
-    assert.match((result.error as Error).message, /ENOENT/)
+    assert.equal(result.isFailed, true)
+    assert.match(result.error.message, /ENOENT/)
+    assert.match(result.stderr, /Reading Data Sketch failed/)
+    assert.match(result.stderr, /ENOENT/)
   })
 
   it('prints check usage for --help', async () => {
     const result = await runCommand(() => runSteps(['--help']))
 
-    assert.equal(result.exitCode, 0)
+    assert.equal(result.isFailed, false)
+    assert.match(result.stdout, /Usage:/)
   })
 
   it('prints check usage for -h', async () => {
     const result = await runCommand(() => runSteps(['-h']))
 
-    assert.equal(result.exitCode, 0)
+    assert.equal(result.isFailed, false)
+    assert.match(result.stdout, /Usage:/)
   })
 
   it('logs option errors and usage with plain messages', async () => {
     const result = await runCommand(() => runSteps([]))
 
-    assert.equal(result.exitCode, 1)
-    assert.match((result.error as Error).message, /missing file argument/)
+    assert.equal(result.isFailed, true)
+    assert.match(result.error.message, /missing file argument/)
+    assert.match(result.stderr, /Error: missing file argument/)
+    assert.match(result.stderr, /Usage:/)
   })
 
   it('rejects an unknown option with plain messages', async () => {
     const result = await runCommand(() => runSteps(['--unknown']))
 
-    assert.equal(result.exitCode, 1)
-    assert.match((result.error as Error).message, /Unknown option/)
+    assert.equal(result.isFailed, true)
+    assert.match(result.error.message, /Unknown option/)
+    assert.match(result.stderr, /Error: Unknown option/)
+    assert.match(result.stderr, /Usage:/)
   })
 })

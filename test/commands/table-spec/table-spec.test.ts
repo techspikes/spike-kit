@@ -81,7 +81,7 @@ describe('table-spec', () => {
     it('prints table-spec usage for --help', async () => {
       const result = await runCommand(() => runSteps(['--help']))
 
-      assert.equal(result.exitCode, 0)
+      assert.equal(result.isFailed, false)
       assert.match(result.stdout, /Usage:/)
       assert.match(result.stdout, /--output/)
       assert.doesNotMatch(result.stdout, /--stdout/)
@@ -91,7 +91,7 @@ describe('table-spec', () => {
     it('prints table-spec usage for -h', async () => {
       const result = await runCommand(() => runSteps(['-h']))
 
-      assert.equal(result.exitCode, 0)
+      assert.equal(result.isFailed, false)
       assert.match(result.stdout, /Usage:/)
       assert.match(result.stdout, /--output/)
       assert.doesNotMatch(result.stdout, /--stdout/)
@@ -114,7 +114,8 @@ describe('table-spec', () => {
         ])
       )
 
-      assert.equal(result.exitCode, 0)
+      assert.equal(result.isFailed, false)
+      assert.equal(result.stdout, '')
       const output = await readTemporaryFile(outputPath)
       assert.notEqual(output, 'outdated document\n')
     })
@@ -126,8 +127,8 @@ describe('table-spec', () => {
         ])
       )
 
-      assert.equal(result.exitCode, 1)
-      assert.match((result.error as Error).message, /--output/)
+      assert.equal(result.isFailed, true)
+      assert.match(result.error.message, /--output/)
       assert.match(result.stderr, /Usage:/)
     })
 
@@ -136,8 +137,8 @@ describe('table-spec', () => {
         runSteps(['--output', 'online-shop.md'])
       )
 
-      assert.equal(result.exitCode, 1)
-      assert.match((result.error as Error).message, /input file/)
+      assert.equal(result.isFailed, true)
+      assert.match(result.error.message, /input file/)
       assert.match(result.stderr, /Usage:/)
     })
 
@@ -149,8 +150,8 @@ describe('table-spec', () => {
         ])
       )
 
-      assert.equal(result.exitCode, 1)
-      assert.match((result.error as Error).message, /argument missing/)
+      assert.equal(result.isFailed, true)
+      assert.match(result.error.message, /argument missing/)
       assert.match(result.stderr, /Usage:/)
     })
 
@@ -162,8 +163,8 @@ describe('table-spec', () => {
         ])
       )
 
-      assert.equal(result.exitCode, 1)
-      assert.match((result.error as Error).message, /Unknown option/)
+      assert.equal(result.isFailed, true)
+      assert.match(result.error.message, /Unknown option/)
       assert.match(result.stderr, /Usage:/)
     })
   })
@@ -280,7 +281,8 @@ describe('table-spec', () => {
       const expected = await readFixtureFile(
         'fixtures/expected/online-shop-minimal.md'
       )
-      assert.equal(result.exitCode, 0)
+      assert.equal(result.isFailed, false)
+      assert.equal(result.stdout, '')
       assert.equal(normalizeGeneratedAt(output), expected)
     })
 
@@ -304,7 +306,8 @@ describe('table-spec', () => {
       const expected = await readFixtureFile(
         'fixtures/expected/online-shop-sources-openapi-ignored-members.md'
       )
-      assert.equal(result.exitCode, 0)
+      assert.equal(result.isFailed, false)
+      assert.equal(result.stdout, '')
       assert.equal(normalizeGeneratedAt(output), expected)
     })
 
@@ -324,8 +327,10 @@ describe('table-spec', () => {
         ])
       )
 
-      assert.equal(result.exitCode, 1)
-      assert.match((result.error as Error).message, /stores/)
+      assert.equal(result.isFailed, true)
+      assert.match(result.error.message, /stores/)
+      assert.match(result.stderr, /Validating Data Sketch failed/)
+      assert.match(result.stderr, /stores/)
 
       await assert.rejects(readTemporaryFile(outputPath), /ENOENT/)
     })
@@ -346,8 +351,10 @@ describe('table-spec', () => {
         ])
       )
 
-      assert.equal(result.exitCode, 1)
-      assert.match((result.error as Error).message, /Failed to parse/)
+      assert.equal(result.isFailed, true)
+      assert.match(result.error.message, /Failed to parse/)
+      assert.match(result.stderr, /Validating Data Sketch failed/)
+      assert.match(result.stderr, /Failed to parse/)
 
       await assert.rejects(readTemporaryFile(outputPath), /ENOENT/)
     })
@@ -365,8 +372,10 @@ describe('table-spec', () => {
         ])
       )
 
-      assert.equal(result.exitCode, 1)
-      assert.match((result.error as Error).message, /ENOENT/)
+      assert.equal(result.isFailed, true)
+      assert.match(result.error.message, /ENOENT/)
+      assert.match(result.stderr, /Reading Data Sketch failed/)
+      assert.match(result.stderr, /ENOENT/)
     })
 
     it('keeps an existing output document unchanged when validation fails in file-output mode', async () => {
@@ -387,7 +396,8 @@ describe('table-spec', () => {
         ])
       )
 
-      assert.equal(result.exitCode, 1)
+      assert.equal(result.isFailed, true)
+      assert.match(result.stderr, /Validating Data Sketch failed/)
       assert.equal(
         await readTemporaryFile(outputPath),
         'approved table specification\n'
@@ -408,8 +418,10 @@ describe('table-spec', () => {
         ])
       )
 
-      assert.equal(result.exitCode, 1)
-      assert.match((result.error as Error).message, /ENOENT/)
+      assert.equal(result.isFailed, true)
+      assert.match(result.error.message, /ENOENT/)
+      assert.match(result.stderr, /Writing table specification failed/)
+      assert.match(result.stderr, /ENOENT/)
     })
 
     it('writes multiple validation issues without a reason box in file-output mode', async () => {
@@ -427,10 +439,14 @@ describe('table-spec', () => {
         ])
       )
 
-      assert.equal(result.exitCode, 1)
-      assert.match((result.error as Error).message, /data-sketch/)
-      assert.match((result.error as Error).message, /info\.name/)
-      assert.match((result.error as Error).message, /stores/)
+      assert.equal(result.isFailed, true)
+      assert.match(result.error.message, /data-sketch/)
+      assert.match(result.error.message, /info\.name/)
+      assert.match(result.error.message, /stores/)
+      assert.match(result.stderr, /Validating Data Sketch failed/)
+      assert.match(result.stderr, /data-sketch/)
+      assert.match(result.stderr, /info\.name/)
+      assert.match(result.stderr, /stores/)
     })
   })
 })

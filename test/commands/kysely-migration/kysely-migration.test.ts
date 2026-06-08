@@ -19,7 +19,7 @@ import {
   Migrator,
   NO_MIGRATIONS
 } from 'kysely/migration'
-import { command as kyselyMigrationCommand } from '../../../src/commands/kysely-migration/index.ts'
+import { runSteps } from '../../../src/commands/kysely-migration/index.ts'
 import { shot } from '../../../src/commands/kysely-migration/lib.ts'
 import { parseSpecification } from '../../../src/core/parser.ts'
 import {
@@ -45,7 +45,7 @@ async function parseSpecificationFile(path: string): Promise<unknown> {
 }
 
 async function runKyselyMigrationCli(args: string[]) {
-  return runCommand(() => kyselyMigrationCommand.run(args))
+  return runCommand(() => runSteps(args))
 }
 
 async function runMigrationShot(
@@ -88,22 +88,24 @@ describe('kysely-migration', () => {
       const result = await runKyselyMigrationCli(['--help'])
 
       assert.equal(result.isFailed, false)
-      assert.match(kyselyMigrationCommand.usage, /--output/)
-      assert.match(kyselyMigrationCommand.usage, /--previous-migration/)
-      assert.match(kyselyMigrationCommand.usage, /-p/)
-      assert.match(kyselyMigrationCommand.usage, /--types-output/)
-      assert.match(kyselyMigrationCommand.usage, /--dry-run/)
+      assert.match(result.stdout, /--output/)
+      assert.match(result.stdout, /--previous-migration/)
+      assert.match(result.stdout, /-p/)
+      assert.match(result.stdout, /--types-output/)
+      assert.match(result.stdout, /--dry-run/)
+      assert.equal(result.stderr, '')
     })
 
     it('prints kysely-migration usage for -h', async () => {
       const result = await runKyselyMigrationCli(['-h'])
 
       assert.equal(result.isFailed, false)
-      assert.match(kyselyMigrationCommand.usage, /--output/)
-      assert.match(kyselyMigrationCommand.usage, /--previous-migration/)
-      assert.match(kyselyMigrationCommand.usage, /-p/)
-      assert.match(kyselyMigrationCommand.usage, /--types-output/)
-      assert.match(kyselyMigrationCommand.usage, /--dry-run/)
+      assert.match(result.stdout, /--output/)
+      assert.match(result.stdout, /--previous-migration/)
+      assert.match(result.stdout, /-p/)
+      assert.match(result.stdout, /--types-output/)
+      assert.match(result.stdout, /--dry-run/)
+      assert.equal(result.stderr, '')
     })
 
     it('logs option errors without progress output', async () => {
@@ -111,7 +113,7 @@ describe('kysely-migration', () => {
 
       assert.equal(result.isFailed, true)
       assert.match(result.error.message, /--output/)
-      assert.match(kyselyMigrationCommand.usage, /--output/)
+      assert.match(result.stderr, /--output/)
     })
 
     it('reports a type definition output path without the d.ts extension', async () => {
@@ -137,54 +139,11 @@ describe('kysely-migration', () => {
 
       assert.equal(result.isFailed, true)
       assert.match(result.error.message, /Unknown option/)
-      assert.match(kyselyMigrationCommand.usage, /Usage:/)
+      assert.match(result.stderr, /Usage:/)
     })
   })
 
   describe('rendering and snapshot metadata', () => {
-    it('creates the customer and order initial DB projection snapshot with resolved table and column names', async () => {
-      const snapshot = await createSnapshot('online-shop-initial.valid.yaml')
-      const expected = await readJson(
-        'snapshots/online-shop-initial.expected.json'
-      )
-
-      assert.deepEqual(snapshot, expected)
-    })
-
-    it('keeps defaults, numeric type arguments, ordered indexes, and enum check constraint intent', async () => {
-      const snapshot = await createSnapshot(
-        'online-shop-field-defaults-and-checks.valid.yaml'
-      )
-      const expected = await readJson(
-        'snapshots/online-shop-field-defaults-and-checks.expected.json'
-      )
-
-      assert.deepEqual(snapshot, expected)
-    })
-
-    it('excludes tentative stores from DB projection snapshots by default', async () => {
-      const snapshot = await createSnapshot(
-        'online-shop-tentative-store.valid.yaml'
-      )
-      const expected = await readJson(
-        'snapshots/online-shop-tentative-store.excluded.expected.json'
-      )
-
-      assert.deepEqual(snapshot, expected)
-    })
-
-    it('includes tentative stores when DB projection snapshot generation explicitly opts in', async () => {
-      const snapshot = await createSnapshot(
-        'online-shop-tentative-store.valid.yaml',
-        { includeTentative: true }
-      )
-      const expected = await readJson(
-        'snapshots/online-shop-tentative-store.included.expected.json'
-      )
-
-      assert.deepEqual(snapshot, expected)
-    })
-
     it('renders a TypeScript migration with a non-exported migration database type and embedded snapshot', async () => {
       const { snapshot, migrationSource: output } = await runMigrationShot(
         'online-shop-initial.valid.yaml'
@@ -828,7 +787,7 @@ describe('kysely-migration', () => {
       const expectedSnapshot = await readJson(
         'snapshots/online-shop-initial.expected.json'
       )
-      const { isFailed } = await runKyselyMigrationCli([
+      const result = await runKyselyMigrationCli([
         fixturePath(import.meta.url, 'online-shop-initial.valid.yaml'),
         '--output',
         migrationPath,
@@ -841,7 +800,9 @@ describe('kysely-migration', () => {
       const migrationGeneratedAt = readEmbeddedGeneratedAt(migration)
       const typesGeneratedAt = readEmbeddedGeneratedAt(types)
 
-      assert.equal(isFailed, false)
+      assert.equal(result.isFailed, false)
+      assert.match(result.stdout, /shot kysely-migration completed/)
+      assert.equal(result.stderr, '')
       assert.deepEqual(parseEmbeddedSnapshot(migration), expectedSnapshot)
       assert.deepEqual(parseEmbeddedSnapshot(types), expectedSnapshot)
       assert.equal(migrationGeneratedAt, typesGeneratedAt)
@@ -981,7 +942,7 @@ describe('kysely-migration', () => {
       const migrationPath = join(directory, 'initial.ts')
       const typesPath = join(directory, 'database.d.ts')
 
-      const { isFailed } = await runKyselyMigrationCli([
+      const result = await runKyselyMigrationCli([
         fixturePath(import.meta.url, 'online-shop-initial.valid.yaml'),
         '--output',
         migrationPath,
@@ -990,7 +951,9 @@ describe('kysely-migration', () => {
         '--dry-run'
       ])
 
-      assert.equal(isFailed, false)
+      assert.equal(result.isFailed, false)
+      assert.match(result.stdout, /shot kysely-migration dry run completed/)
+      assert.equal(result.stderr, '')
       await assert.rejects(access(migrationPath))
       await assert.rejects(access(typesPath))
     })
@@ -1002,14 +965,16 @@ describe('kysely-migration', () => {
       )
       const migrationPath = join(directory, 'initial.ts')
 
-      const { isFailed } = await runKyselyMigrationCli([
+      const result = await runKyselyMigrationCli([
         fixturePath(import.meta.url, 'online-shop-tentative-store.valid.yaml'),
         '--output',
         migrationPath
       ])
       const migration = await readFile(migrationPath, 'utf8')
 
-      assert.equal(isFailed, false)
+      assert.equal(result.isFailed, false)
+      assert.match(result.stdout, /shot kysely-migration completed/)
+      assert.match(result.stderr, /Tentative store excluded from migration/)
       assert.doesNotMatch(migration, /order_drafts/)
     })
 
@@ -1039,14 +1004,16 @@ describe('kysely-migration', () => {
       )
       const migrationPath = join(directory, 'initial.ts')
 
-      const { isFailed } = await runKyselyMigrationCli([
+      const result = await runKyselyMigrationCli([
         fixturePath(import.meta.url, 'online-shop-enum-warning.valid.yaml'),
         '--output',
         migrationPath
       ])
       const migration = await readFile(migrationPath, 'utf8')
 
-      assert.equal(isFailed, false)
+      assert.equal(result.isFailed, false)
+      assert.match(result.stdout, /shot kysely-migration completed/)
+      assert.match(result.stderr, /Enum check constraint ignored/)
       assert.doesNotMatch(migration, /addCheckConstraint|ck_orders_status_enum/)
     })
 

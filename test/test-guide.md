@@ -14,6 +14,7 @@ Examples:
 - `test/commands/check/check.test.ts` may use `test/commands/check/fixtures/`.
 - `test/commands/table-spec/table-spec.test.ts` may use `test/commands/table-spec/fixtures/`.
 - `test/commands/kysely-migration/kysely-migration.test.ts` may use `test/commands/kysely-migration/fixtures/`.
+- `test/core/projector/projector.test.ts` may use `test/core/projector/fixtures/`.
 - `test/core/validator/validator.test.ts` may use `test/core/validator/fixtures/`.
 
 Use a local `readFixtureFile('fixtures/...')` helper in each test file with

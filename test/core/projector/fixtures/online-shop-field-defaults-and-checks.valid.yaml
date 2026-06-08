@@ -1,0 +1,71 @@
+data-sketch: 1.0.0-draft.0
+info:
+  name: online-shop
+stores:
+  product:
+    name: products
+    reason: Persist product catalog values.
+    trace:
+      operations:
+        - createProduct
+    fields:
+      id:
+        name: id
+        type:
+          name: integer
+        nullable: false
+        default: 0
+      price:
+        name: price
+        type:
+          name: decimal
+          precision: 18
+          scale: 2
+        nullable: false
+        default: 0.5
+      rating:
+        name: rating
+        type:
+          name: numeric
+          precision: 3
+        nullable: true
+        default: null
+      active:
+        name: active
+        type:
+          name: boolean
+        nullable: false
+        default: true
+      notes:
+        name: notes
+        type:
+          name: varchar
+          length: 200
+        nullable: true
+      status:
+        name: status
+        type:
+          name: varchar
+          length: 20
+        nullable: false
+        default: available
+        enum:
+          - available
+          - discontinued
+    keys:
+      primary:
+        name: pk_products
+        fields:
+          - id
+          - status
+      unique:
+        - name: ux_products_price_rating
+          fields:
+            - price
+            - rating
+    indexes:
+      - name: ix_products_status
+        fields:
+          - field: status
+            order: desc
+        reason: Used for product catalog filtering.

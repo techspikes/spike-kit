@@ -261,44 +261,25 @@ Type mapping:
 
 ## Warnings
 
-Warnings are written with progress output and do not change the exit code.
+Warnings are written to standard error and do not change the exit code.
 
 - `Tentative store excluded from migration: <table>`
 - `Enum check constraint ignored by migration renderer: <table>.<column>`
 
-## Progress Output
+## Logging
 
 The command is non-interactive and does not prompt for input.
 
-Successful file generation reports:
+Successful file generation writes only this completion message to standard output:
 
 ```text
-Data Sketch read
-Validating Data Sketch
-Creating DB projection snapshot
-Rendering migration
-Migration written
-Type definitions written
-Migration generated
+shot kysely-migration completed
 ```
 
-`Type definitions written` is emitted only when `--types-output` is used.
-
-Successful diff migration generation also reports these steps after reading the file passed to `--previous-migration` or `-p`:
+Successful dry-run writes only this completion message to standard output:
 
 ```text
-Previous migration read
-Previous DB projection snapshot parsed
-```
-
-Successful dry-run reports:
-
-```text
-Data Sketch read
-Validating Data Sketch
-Creating DB projection snapshot
-Rendering migration
-Dry run completed
+shot kysely-migration dry run completed
 ```
 
 Argument errors write `Error: <reason>`, a blank line, and usage text to standard error.

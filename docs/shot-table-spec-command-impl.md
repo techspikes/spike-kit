@@ -13,11 +13,11 @@ low-level `shot(...)` helper used by focused document rendering tests.
 
 ## Logging Implementation
 
-`shot table-spec --output` and `shot table-spec -o` use the shared pino logger only for help and error output:
+`shot table-spec --output` and `shot table-spec -o` use the shared pino logger for help, success, and error output:
 
 - Help usage is logged to standard output.
+- Successful conversion logs `shot table-spec completed` to standard output.
 - Failed argument parsing, file reads, validation, rendering, and file writes are logged to standard error.
-- Successful conversion does not write progress or final status messages.
 
 The implementation does not use a note UI or a `Reason` box. Failure reasons and validation issues are logged as plain text.
 

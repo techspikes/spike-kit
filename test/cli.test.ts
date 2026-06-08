@@ -85,6 +85,6 @@ describe('cli', () => {
       ])
     )
     assert.equal(result.isFailed, false)
-    assert.equal(result.stdout, '')
+    assert.match(result.stdout, /shot check completed/)
   })
 })

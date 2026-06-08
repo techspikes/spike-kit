@@ -2,7 +2,7 @@ import pino from 'pino'
 import pretty from 'pino-pretty'
 
 const STDOUT_LOGGER = pino({ level: 'info' }, prettyStream(process.stdout))
-const STDERR_LOGGER = pino({ level: 'error' }, prettyStream(process.stderr))
+const STDERR_LOGGER = pino({ level: 'warn' }, prettyStream(process.stderr))
 
 type LoggerCapture = {
   stdout: string[]
@@ -22,11 +22,11 @@ export const logger = {
   },
   warn: (message: string) => {
     if (currentCapture !== undefined) {
-      currentCapture.stdout.push(message)
+      currentCapture.stderr.push(message)
       return
     }
     /* c8 ignore next */
-    STDOUT_LOGGER.warn(message)
+    STDERR_LOGGER.warn(message)
   },
   error: (message: string) => {
     if (currentCapture !== undefined) {

@@ -54,6 +54,7 @@ type ExitStatus =
   | {
       isFailed: false
       stdout: string
+      stderr: string
       error?: undefined
     }
   | { isFailed: true; stdout: string; stderr: string; error: Error }
@@ -75,18 +76,10 @@ export async function runCommand(
         error: new Error(`Command failed with status ${result}`)
       }
     }
-    if (stderr !== '') {
-      return {
-        isFailed: true,
-        stdout,
-        stderr,
-        error: new Error('Command wrote to stderr')
-      }
-    }
-
     return {
       isFailed: false,
-      stdout
+      stdout,
+      stderr
     }
   } catch (error) {
     return {

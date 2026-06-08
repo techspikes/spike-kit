@@ -120,7 +120,7 @@ flowchart LR
 
 ## Warnings
 
-Warnings use `log.warn()` in command execution and do not change the exit code.
+Warnings use `logger.warn()` in command execution, are written to standard error, and do not change the exit code.
 
 - stores marked with `tentative: true` excluded by default
 - enum-derived check constraint intent ignored by migration rendering

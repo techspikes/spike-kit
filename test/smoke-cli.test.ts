@@ -139,7 +139,7 @@ describe('smoke-cli', () => {
       checkFixturePath
     ])
 
-    assert.equal(result.stdout, '')
+    assert.match(result.stdout, /shot check completed/)
     assert.equal(result.stderr, '')
   })
 })

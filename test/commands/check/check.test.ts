@@ -94,7 +94,7 @@ describe('check', () => {
     )
 
     assert.equal(result.isFailed, false)
-    assert.equal(result.stdout, '')
+    assert.match(result.stdout, /shot check completed/)
   })
 
   it('rejects an online shopping fixture with no stores', async () => {

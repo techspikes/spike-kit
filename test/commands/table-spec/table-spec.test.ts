@@ -115,7 +115,7 @@ describe('table-spec', () => {
       )
 
       assert.equal(result.isFailed, false)
-      assert.equal(result.stdout, '')
+      assert.match(result.stdout, /shot table-spec completed/)
       const output = await readTemporaryFile(outputPath)
       assert.notEqual(output, 'outdated document\n')
     })
@@ -282,7 +282,7 @@ describe('table-spec', () => {
         'fixtures/expected/online-shop-minimal.md'
       )
       assert.equal(result.isFailed, false)
-      assert.equal(result.stdout, '')
+      assert.match(result.stdout, /shot table-spec completed/)
       assert.equal(normalizeGeneratedAt(output), expected)
     })
 
@@ -307,7 +307,7 @@ describe('table-spec', () => {
         'fixtures/expected/online-shop-sources-openapi-ignored-members.md'
       )
       assert.equal(result.isFailed, false)
-      assert.equal(result.stdout, '')
+      assert.match(result.stdout, /shot table-spec completed/)
       assert.equal(normalizeGeneratedAt(output), expected)
     })
 

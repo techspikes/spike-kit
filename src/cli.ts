@@ -1,7 +1,7 @@
 import { createRequire } from 'node:module'
 import { pathToFileURL } from 'node:url'
 import { runSteps as runCheckSteps } from './commands/check/index.ts'
-import { command as kyselyMigrationCommand } from './commands/kysely-migration/index.ts'
+import { runSteps as runKyselyMigrationSteps } from './commands/kysely-migration/index.ts'
 import { runSteps as runTableSpecSteps } from './commands/table-spec/index.ts'
 import { logger } from './core/logger.ts'
 
@@ -14,7 +14,11 @@ const commands = [
     summary: 'Validate a Valuable Data Specification v1 YAML or JSON file',
     run: runCheckSteps
   },
-  kyselyMigrationCommand,
+  {
+    name: 'kysely-migration',
+    summary: 'Generate a Kysely TypeScript initial or diff migration',
+    run: runKyselyMigrationSteps
+  },
   {
     name: 'table-spec',
     summary: 'Generate a Markdown table specification document',
@@ -22,21 +26,22 @@ const commands = [
   }
 ]
 
-const usage = () => [
-  'Usage:',
-  '  shot check <file>',
-  '  shot kysely-migration <file> --output <file>',
-  '  shot table-spec <file> --output <file>',
-  '',
-  'Subcommands:',
-  '  check             Validate a Valuable Data Specification v1 YAML or JSON file',
-  '  kysely-migration  Generate a Kysely TypeScript initial or diff migration',
-  '  table-spec        Generate a Markdown table specification document',
-  '',
-  'Options:',
-  '  -h, --help     Show this help',
-  '  -v, --version  Show version'
-].join('\n')
+const usage = () =>
+  [
+    'Usage:',
+    '  shot check <file>',
+    '  shot kysely-migration <file> --output <file>',
+    '  shot table-spec <file> --output <file>',
+    '',
+    'Subcommands:',
+    '  check             Validate a Valuable Data Specification v1 YAML or JSON file',
+    '  kysely-migration  Generate a Kysely TypeScript initial or diff migration',
+    '  table-spec        Generate a Markdown table specification document',
+    '',
+    'Options:',
+    '  -h, --help     Show this help',
+    '  -v, --version  Show version'
+  ].join('\n')
 
 export async function main(argv = process.argv.slice(2)) {
   try {

@@ -23,6 +23,7 @@ export async function runSteps(args: string[]) {
   const spec = await stepReadSpec(options.path)
   const tableSpec = await stepCreateTableSpec(options.path, spec)
   await stepWriteOutput(options.outputPath, tableSpec)
+  logger.info('shot table-spec completed')
 }
 
 function stepParseArgs(args: string[]): ParsedArgs {

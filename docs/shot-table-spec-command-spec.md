@@ -24,7 +24,7 @@ shot table-spec -h
 
 The command is non-interactive and does not prompt for input.
 
-With `--output` or `-o`, successful conversion writes only the generated Markdown file. It does not write progress or final status messages.
+With `--output` or `-o`, successful conversion writes the generated Markdown file and logs only `shot table-spec completed` to standard output.
 
 If an operation fails, the failed step and reason are logged to standard error.
 

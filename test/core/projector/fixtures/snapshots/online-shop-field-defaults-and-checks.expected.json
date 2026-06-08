@@ -1,0 +1,117 @@
+{
+  "data-sketch/db-projection-snapshot": "1.0.0-draft.0",
+  "tables": [
+    {
+      "id": "product",
+      "name": "products",
+      "columns": [
+        {
+          "id": "id",
+          "name": "id",
+          "type": {
+            "name": "integer"
+          },
+          "nullable": false,
+          "default": {
+            "kind": "literal",
+            "value": 0
+          }
+        },
+        {
+          "id": "price",
+          "name": "price",
+          "type": {
+            "name": "decimal",
+            "precision": 18,
+            "scale": 2
+          },
+          "nullable": false,
+          "default": {
+            "kind": "literal",
+            "value": 0.5
+          }
+        },
+        {
+          "id": "rating",
+          "name": "rating",
+          "type": {
+            "name": "numeric",
+            "precision": 3
+          },
+          "nullable": true,
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        },
+        {
+          "id": "active",
+          "name": "active",
+          "type": {
+            "name": "boolean"
+          },
+          "nullable": false,
+          "default": {
+            "kind": "literal",
+            "value": true
+          }
+        },
+        {
+          "id": "notes",
+          "name": "notes",
+          "type": {
+            "name": "varchar",
+            "length": 200
+          },
+          "nullable": true,
+          "default": {
+            "kind": "omitted"
+          }
+        },
+        {
+          "id": "status",
+          "name": "status",
+          "type": {
+            "name": "varchar",
+            "length": 20
+          },
+          "nullable": false,
+          "default": {
+            "kind": "literal",
+            "value": "available"
+          }
+        }
+      ],
+      "uniqueConstraints": [
+        {
+          "name": "ux_products_price_rating",
+          "columns": ["price", "rating"]
+        }
+      ],
+      "foreignKeys": [],
+      "indexes": [
+        {
+          "name": "ix_products_status",
+          "columns": [
+            {
+              "name": "status",
+              "order": "desc"
+            }
+          ]
+        }
+      ],
+      "checkConstraints": [
+        {
+          "name": "ck_products_status_enum",
+          "kind": "enum",
+          "column": "status",
+          "values": ["available", "discontinued"]
+        }
+      ],
+      "primaryKey": {
+        "name": "pk_products",
+        "columns": ["id", "status"]
+      }
+    }
+  ]
+}

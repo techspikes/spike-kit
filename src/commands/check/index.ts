@@ -21,6 +21,7 @@ export async function runSteps(args: string[]) {
 
   const spec = await stepReadSpec(options.path)
   await stepCheckDataSketch(options.path, spec)
+  logger.info('shot check completed')
 }
 
 function stepParseArgs(args: string[]): ParsedArgs {

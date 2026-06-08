@@ -22,7 +22,7 @@ shot check -h
 
 The command is non-interactive and does not prompt for input.
 
-Successful validation does not write progress or final status messages.
+Successful validation writes only `shot check completed` to standard output.
 
 When reading fails, the failed step and reason are logged to standard error.
 When parsing fails, the failed validation step and parse error are logged to standard error.
@@ -63,7 +63,11 @@ stores:
         nullable: false
 ```
 
-Expected successful output is empty.
+Expected successful output:
+
+```text
+shot check completed
+```
 
 ## Invalid Document Example
 

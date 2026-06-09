@@ -44,6 +44,12 @@ After installation, run the CLI through npm:
 npx shot --help
 ```
 
+The package also exposes a small library API for programmatic use:
+
+```ts
+import { check, kyselyMigration, tableSpec } from '@techspikes/spike-kit'
+```
+
 ## Commands
 
 ### Validate a Data Sketch
@@ -137,12 +143,12 @@ npm run test:smoke
 When working from this repository, run the built CLI with Node:
 
 ```sh
-node dist/cli.js --help
+node dist/cli.mjs --help
 ```
 
-`npm run build` updates `dist/cli.js`. Because this project distributes the CLI
-from the bundled file, include `dist/cli.js` when CLI source changes affect the
-executable.
+`npm run build` updates `dist/cli.mjs`, `dist/index.mjs`, and
+`dist/index.d.ts`. Because this project distributes bundled files, include the
+affected `dist` files when source changes affect the CLI or library output.
 
 ## Documentation
 

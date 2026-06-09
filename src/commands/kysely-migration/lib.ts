@@ -31,7 +31,7 @@ type MigrationRenderOptions = {
   generatedAt: string
 }
 
-type ShotInput = {
+export type ShotInput = {
   source: string
   sourceName?: string
   sources?: {
@@ -42,7 +42,7 @@ type ShotInput = {
   previousSource?: string
 }
 
-type ShotOutput = {
+export type ShotOutput = {
   spec: Specification
   previousSnapshot?: DbProjectionSnapshot
   snapshot: DbProjectionSnapshot

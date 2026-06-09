@@ -10,25 +10,23 @@ This implementation completes initial migration generation and diff migration ge
 
 kysely-migration command code lives in `src/commands/kysely-migration/`.
 
-The package exposes only the CLI entrypoint. It does not provide a public render
-library API.
+The package exposes the CLI entrypoint and a small library entrypoint. The
+library entrypoint re-exports this command's `shot(...)` function as
+`kyselyMigration`.
 
-Within the source tree, `index.ts` exports the CLI command object and
+Within the source tree, `index.ts` exports the CLI `runSteps(...)` function and
 `lib.ts` exports:
 
-- `generateKyselyMigration(...)`
-- low-level snapshot and rendering helpers used by focused tests, such as
-  `createDbProjectionSnapshot(...)`, `renderMigrationSource(...)`,
-  `renderDiffMigrationSource(...)`, `renderDatabaseTypeSource(...)`,
-  `renderEmbeddedSnapshot(...)`, `parseEmbeddedSnapshot(...)`, and
-  `resolveMigrationOutputPath(...)`
+- `shot(...)`
+- `ShotInput`
+- `ShotOutput`
 
 DB projection snapshot creation lives in `src/core/projector.ts`. It remains a
 small concrete helper rather than a general projection abstraction.
 
 ## Processing Order
 
-`runKyselyMigrationCommand` performs work in this order:
+`runSteps(...)` performs work in this order:
 
 1. Parse and validate command options.
 2. Read the Data Sketch source.
@@ -39,7 +37,7 @@ small concrete helper rather than a general projection abstraction.
 7. Collect warnings for excluded tentative stores and ignored enum check constraints.
 8. If a before snapshot exists, compare the before and after snapshots and build the diff operation plan.
 9. Render either the initial migration source from the after snapshot or the diff migration source from the before snapshot, after snapshot, and diff operation plan.
-10. When `--types-output` is set, render type source from the after snapshot.
+10. Render type source from the after snapshot.
 11. In `--dry-run`, stop before writing files.
 12. In normal mode, write the migration file and optional type file.
 
@@ -63,10 +61,8 @@ flowchart TD
   ParsePrevious --> DiffPlan[compare before/after and build diff operation plan]
   Previous -- no --> InitialRender[render initial migration from after snapshot]
   DiffPlan --> DiffRender[render diff migration from before/after snapshots]
-  InitialRender --> Types{types output?}
-  DiffRender --> Types
-  Types -- yes --> RenderTypes[render types from after snapshot]
-  Types -- no --> Warnings[collect warnings]
+  InitialRender --> RenderTypes[render types from after snapshot]
+  DiffRender --> RenderTypes
   RenderTypes --> Warnings
   Warnings --> DryRun{dry-run?}
   DryRun -- yes --> Done[dry-run success]

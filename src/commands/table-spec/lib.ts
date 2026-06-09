@@ -22,7 +22,7 @@ import {
   validateSpecification
 } from '../../core/validator.ts'
 
-type ShotInput = {
+export type ShotInput = {
   spec: string
   sources?: {
     openapi: (source: string) => Promise<string>
@@ -30,7 +30,7 @@ type ShotInput = {
   metadata: TableSpecMetadata
 }
 
-type ShotOutput = {
+export type ShotOutput = {
   tableSpec: string
 }
 

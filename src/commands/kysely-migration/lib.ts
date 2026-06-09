@@ -31,33 +31,25 @@ type MigrationRenderOptions = {
   generatedAt: string
 }
 
-type RenderMode = 'migration' | 'databaseTypes' | 'migrationAndDatabaseTypes'
-
-type ShotInput<TOptions extends object = object> = {
+type ShotInput = {
   source: string
   sourceName?: string
   sources?: {
     openapi?: (source: string) => Promise<string>
   }
-} & TOptions
-
-type KyselyMigrationShotOptions = {
-  previousMigrationSource?: string
   includeTentative: boolean
   generatedAt: string
-  renderMode?: RenderMode
+  previousSource?: string
 }
 
-type ShotOutput<TResult extends object> = TResult
-
-type KyselyMigrationShotOutput = ShotOutput<{
+type ShotOutput = {
   spec: Specification
   previousSnapshot?: DbProjectionSnapshot
   snapshot: DbProjectionSnapshot
   warnings: MigrationWarning[]
-  migrationSource?: string
-  databaseTypesSource?: string
-}>
+  migration: string
+  types: string
+}
 
 class KyselyMigrationValidationError extends Error {
   readonly issues: ValidationIssue[]
@@ -69,22 +61,12 @@ class KyselyMigrationValidationError extends Error {
   }
 }
 
-export async function shot<
-  TResult extends KyselyMigrationShotOutput = KyselyMigrationShotOutput,
-  TOptions extends KyselyMigrationShotOptions = KyselyMigrationShotOptions
->(input: ShotInput<TOptions>): Promise<TResult> {
+export async function shot(input: ShotInput): Promise<ShotOutput> {
   const prepared = await prepareKyselyMigration(input)
-  const renderMode = input.renderMode ?? 'migration'
-  const output: {
-    migrationSource?: string
-    databaseTypesSource?: string
-  } = {}
 
-  if (
-    renderMode === 'migration' ||
-    renderMode === 'migrationAndDatabaseTypes'
-  ) {
-    output.migrationSource =
+  return {
+    ...prepared,
+    migration:
       prepared.previousSnapshot === undefined
         ? renderMigrationSource(prepared.snapshot, {
             generatedAt: input.generatedAt
@@ -95,22 +77,14 @@ export async function shot<
             {
               generatedAt: input.generatedAt
             }
-          )
-  }
-  if (
-    renderMode === 'databaseTypes' ||
-    renderMode === 'migrationAndDatabaseTypes'
-  ) {
-    output.databaseTypesSource = renderDatabaseTypeSource(prepared.snapshot, {
+          ),
+    types: renderDatabaseTypeSource(prepared.snapshot, {
       generatedAt: input.generatedAt
     })
   }
-  return { ...prepared, ...output } as TResult
 }
 
-async function prepareKyselyMigration(
-  input: ShotInput<KyselyMigrationShotOptions>
-) {
+async function prepareKyselyMigration(input: ShotInput) {
   const parsed = parseSpecification(input.source)
 
   const validation = await validateSpecification(parsed, {
@@ -121,9 +95,9 @@ async function prepareKyselyMigration(
   }
 
   const previousSnapshot =
-    input.previousMigrationSource === undefined
+    input.previousSource === undefined
       ? undefined
-      : parseEmbeddedSnapshot(input.previousMigrationSource)
+      : parseEmbeddedSnapshot(input.previousSource)
 
   const snapshot = createDbProjectionSnapshot(validation.data, {
     includeTentative: input.includeTentative

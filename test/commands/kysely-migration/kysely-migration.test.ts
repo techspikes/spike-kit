@@ -52,8 +52,7 @@ async function runMigrationShot(
   fixtureName: string,
   options: {
     includeTentative?: boolean
-    previousMigrationSource?: string
-    renderMode?: 'migration' | 'databaseTypes' | 'migrationAndDatabaseTypes'
+    previousSource?: string
   } = {}
 ) {
   const source = await readText(fixtureName)
@@ -61,16 +60,10 @@ async function runMigrationShot(
   return shot({
     source,
     sourceName: fixturePath(import.meta.url, fixtureName),
-    previousMigrationSource: options.previousMigrationSource,
+    previousSource: options.previousSource,
     includeTentative: options.includeTentative === true,
-    generatedAt: fixedGeneratedAt,
-    renderMode: options.renderMode
+    generatedAt: fixedGeneratedAt
   })
-}
-
-function requiredOutput(output: string | undefined, name: string) {
-  if (output === undefined) throw new Error(`${name} is missing`)
-  return output
 }
 
 afterEach(async () => {
@@ -145,10 +138,9 @@ describe('kysely-migration', () => {
 
   describe('rendering and snapshot metadata', () => {
     it('renders a TypeScript migration with a non-exported migration database type and embedded snapshot', async () => {
-      const { snapshot, migrationSource: output } = await runMigrationShot(
+      const { snapshot, migration } = await runMigrationShot(
         'online-shop-initial.valid.yaml'
       )
-      const migration = requiredOutput(output, 'migration source')
       const embedded = parseEmbeddedSnapshot(migration)
       const expected = await readText(
         'expected/online-shop-initial.migration.ts'
@@ -159,11 +151,9 @@ describe('kysely-migration', () => {
     })
 
     it('renders exported Database type definitions for application Kysely usage', async () => {
-      const { snapshot, databaseTypesSource: output } = await runMigrationShot(
-        'online-shop-initial.valid.yaml',
-        { renderMode: 'databaseTypes' }
+      const { snapshot, types } = await runMigrationShot(
+        'online-shop-initial.valid.yaml'
       )
-      const types = requiredOutput(output, 'database types source')
       const embedded = parseEmbeddedSnapshot(types)
       const expected = await readText(
         'expected/online-shop-initial.database.d.ts'
@@ -179,51 +169,47 @@ describe('kysely-migration', () => {
       const result = await shot({
         source,
         includeTentative: false,
-        generatedAt: fixedGeneratedAt,
-        renderMode: 'databaseTypes'
+        generatedAt: fixedGeneratedAt
       })
 
-      assert.match(
-        result.databaseTypesSource ?? '',
-        /export interface Database/
-      )
+      assert.match(result.types, /export interface Database/)
       assert.equal(result.spec.info.name, 'online-shop')
       assert.deepEqual(result.previousSnapshot, undefined)
     })
 
-    it('renders type definitions for defaults and nullable columns but rejects unsupported Kysely column types in migration output', async () => {
-      const { databaseTypesSource: types } = await runMigrationShot(
-        'online-shop-rendering-branches.valid.yaml',
-        { renderMode: 'databaseTypes' }
-      )
-      const databaseTypes = requiredOutput(types, 'database types source')
-
+    it('rejects unsupported Kysely column types in migration output', async () => {
       await assert.rejects(
         runMigrationShot('online-shop-rendering-branches.valid.yaml'),
         /Column type is not supported by the kysely-migration command: products\.rating numeric\(3\)/
       )
-      assert.match(databaseTypes, /"active": boolean/)
-      assert.match(databaseTypes, /"rating": number \| null/)
-      assert.match(databaseTypes, /"notes": string \| null/)
+    })
+
+    it('renders type definitions for defaults and nullable columns', async () => {
+      const { types } = await runMigrationShot(
+        'online-shop-kysely-supported-rendering-branches.valid.yaml'
+      )
+
+      assert.match(types, /"active": boolean/)
+      assert.match(types, /"rating": number \| null/)
+      assert.match(types, /"notes": string \| null/)
     })
 
     it('renders defaults, nullable columns, SQL type arguments, and referential actions for Kysely-supported column types', async () => {
-      const { migrationSource: migration } = await runMigrationShot(
+      const { migration } = await runMigrationShot(
         'online-shop-kysely-supported-rendering-branches.valid.yaml'
       )
-      const output = requiredOutput(migration, 'migration source')
 
-      assert.match(output, /defaultTo\(0\)/)
-      assert.match(output, /defaultTo\(0\.5\)/)
-      assert.match(output, /defaultTo\(null\)/)
-      assert.match(output, /defaultTo\("available"\)/)
-      assert.match(output, /defaultTo\(true\)/)
-      assert.match(output, /"decimal\(18, 2\)"/)
-      assert.match(output, /"numeric\(3, 0\)"/)
-      assert.match(output, /"boolean"/)
-      assert.match(output, /onDelete\("set null"\)/)
-      assert.match(output, /onUpdate\("set default"\)/)
-      assert.match(output, /onDelete\("no action"\)/)
+      assert.match(migration, /defaultTo\(0\)/)
+      assert.match(migration, /defaultTo\(0\.5\)/)
+      assert.match(migration, /defaultTo\(null\)/)
+      assert.match(migration, /defaultTo\("available"\)/)
+      assert.match(migration, /defaultTo\(true\)/)
+      assert.match(migration, /"decimal\(18, 2\)"/)
+      assert.match(migration, /"numeric\(3, 0\)"/)
+      assert.match(migration, /"boolean"/)
+      assert.match(migration, /onDelete\("set null"\)/)
+      assert.match(migration, /onUpdate\("set default"\)/)
+      assert.match(migration, /onDelete\("no action"\)/)
     })
 
     it('returns rendered output when warnings are present', async () => {
@@ -239,7 +225,7 @@ describe('kysely-migration', () => {
         generatedAt: fixedGeneratedAt
       })
 
-      assert.match(result.migrationSource ?? '', /export async function up/)
+      assert.match(result.migration, /export async function up/)
       assert.equal(result.warnings.length, 1)
     })
 
@@ -549,7 +535,7 @@ describe('kysely-migration', () => {
         ]
       ] as const
 
-      for (const [previousMigrationSource, expected] of invalidSources) {
+      for (const [previousSource, expected] of invalidSources) {
         await assert.rejects(
           shot({
             source,
@@ -557,7 +543,7 @@ describe('kysely-migration', () => {
               import.meta.url,
               'online-shop-initial.valid.yaml'
             ),
-            previousMigrationSource,
+            previousSource,
             includeTentative: false,
             generatedAt: fixedGeneratedAt
           }),
@@ -570,18 +556,13 @@ describe('kysely-migration', () => {
       const after = await createSnapshot(
         'online-shop-diff-customer-rename.valid.yaml'
       )
-      const { migrationSource: previousMigrationSource } =
-        await runMigrationShot('online-shop-initial.valid.yaml')
-      if (previousMigrationSource === undefined) {
-        throw new Error('previous migration source is missing')
-      }
-      const { migrationSource: output } = await runMigrationShot(
-        'online-shop-diff-customer-rename.valid.yaml',
-        { previousMigrationSource }
+      const { migration: previousSource } = await runMigrationShot(
+        'online-shop-initial.valid.yaml'
       )
-      if (output === undefined) {
-        throw new Error('migration source is missing')
-      }
+      const { migration: output } = await runMigrationShot(
+        'online-shop-diff-customer-rename.valid.yaml',
+        { previousSource }
+      )
 
       assert.deepEqual(parseEmbeddedSnapshot(output), after)
       assert.match(output, /renameTo\("shop_customers"\)/)
@@ -596,16 +577,13 @@ describe('kysely-migration', () => {
     })
 
     it('renders table and column additions and deletions in diff migration up and down paths', async () => {
-      const { migrationSource: previousMigrationSource } =
-        await runMigrationShot('online-shop-initial.valid.yaml')
-      if (previousMigrationSource === undefined) {
-        throw new Error('previous migration source is missing')
-      }
-      const { migrationSource: output } = await runMigrationShot(
-        'online-shop-tentative-store.valid.yaml',
-        { previousMigrationSource, includeTentative: true }
+      const { migration: previousSource } = await runMigrationShot(
+        'online-shop-initial.valid.yaml'
       )
-      if (output === undefined) throw new Error('migration source is missing')
+      const { migration: output } = await runMigrationShot(
+        'online-shop-tentative-store.valid.yaml',
+        { previousSource, includeTentative: true }
+      )
 
       assert.match(output, /dropIndex\("ix_orders_customer_created_at"\)/)
       assert.match(output, /dropConstraint\("fk_orders_customer"\)/)
@@ -621,58 +599,42 @@ describe('kysely-migration', () => {
     })
 
     it('parses embedded DB projection snapshot metadata with unrelated comments before the block', async () => {
-      const { snapshot, migrationSource } = await runMigrationShot(
+      const { snapshot, migration } = await runMigrationShot(
         'online-shop-initial.valid.yaml'
       )
-      if (migrationSource === undefined) {
-        throw new Error('migration source is missing')
-      }
-      const output = ['// unrelated leading comment', migrationSource].join(
-        '\n'
-      )
+      const output = ['// unrelated leading comment', migration].join('\n')
 
       assert.deepEqual(parseEmbeddedSnapshot(output), snapshot)
     })
 
     it('parses embedded DB projection snapshot metadata with unrelated comments after the block', async () => {
-      const { snapshot, migrationSource } = await runMigrationShot(
+      const { snapshot, migration } = await runMigrationShot(
         'online-shop-initial.valid.yaml'
       )
-      if (migrationSource === undefined) {
-        throw new Error('migration source is missing')
-      }
-      const output = [migrationSource, '// unrelated trailing comment'].join(
-        '\n'
-      )
+      const output = [migration, '// unrelated trailing comment'].join('\n')
 
       assert.deepEqual(parseEmbeddedSnapshot(output), snapshot)
     })
 
     it('skips unrelated line-commented front matter blocks when parsing embedded DB projection snapshots', async () => {
-      const { snapshot, migrationSource } = await runMigrationShot(
+      const { snapshot, migration } = await runMigrationShot(
         'online-shop-initial.valid.yaml'
       )
-      if (migrationSource === undefined) {
-        throw new Error('migration source is missing')
-      }
       const output = [
         '// ---',
         '// title: unrelated front matter',
         '// ---',
         '',
-        migrationSource
+        migration
       ].join('\n')
 
       assert.deepEqual(parseEmbeddedSnapshot(output), snapshot)
     })
 
     it('skips malformed line-commented front matter blocks when parsing embedded DB projection snapshots', async () => {
-      const { snapshot, migrationSource } = await runMigrationShot(
+      const { snapshot, migration } = await runMigrationShot(
         'online-shop-initial.valid.yaml'
       )
-      if (migrationSource === undefined) {
-        throw new Error('migration source is missing')
-      }
       const output = [
         '// ---',
         '// malformed: [',
@@ -687,18 +649,16 @@ describe('kysely-migration', () => {
         'not-commented: true',
         '// ---',
         '',
-        migrationSource
+        migration
       ].join('\n')
 
       assert.deepEqual(parseEmbeddedSnapshot(output), snapshot)
     })
 
     it('skips unrelated and malformed previous migration metadata blocks during shot', async () => {
-      const { migrationSource: previousMigrationSource } =
-        await runMigrationShot('online-shop-initial.valid.yaml')
-      if (previousMigrationSource === undefined) {
-        throw new Error('previous migration source is missing')
-      }
+      const { migration: previousSource } = await runMigrationShot(
+        'online-shop-initial.valid.yaml'
+      )
       const previousWithUnrelatedBlocks = [
         '// ---',
         '// malformed: [',
@@ -713,25 +673,21 @@ describe('kysely-migration', () => {
         'not-commented: true',
         '// ---',
         '',
-        previousMigrationSource
+        previousSource
       ].join('\n')
 
-      const { migrationSource } = await runMigrationShot(
+      const { migration } = await runMigrationShot(
         'online-shop-diff-customer-rename.valid.yaml',
-        { previousMigrationSource: previousWithUnrelatedBlocks }
+        { previousSource: previousWithUnrelatedBlocks }
       )
 
-      assert.match(
-        requiredOutput(migrationSource, 'migration source'),
-        /renameTo\("shop_customers"\)/
-      )
+      assert.match(migration, /renameTo\("shop_customers"\)/)
     })
 
     it('parses embedded DB projection snapshot metadata when keys are not in render order', async () => {
-      const { snapshot, migrationSource: rendered } = await runMigrationShot(
+      const { snapshot, migration: rendered } = await runMigrationShot(
         'online-shop-initial.valid.yaml'
       )
-      if (rendered === undefined) throw new Error('migration source is missing')
       const snapshotPayloadLines = rendered
         .split(/\r?\n/)
         .filter(line => line.startsWith('//   '))
@@ -766,10 +722,9 @@ describe('kysely-migration', () => {
     })
 
     it('renders foreign keys without referential actions', async () => {
-      const { migrationSource: output } = await runMigrationShot(
+      const { migration: output } = await runMigrationShot(
         'online-shop-foreign-key-without-actions.valid.yaml'
       )
-      if (output === undefined) throw new Error('migration source is missing')
 
       assert.match(output, /addForeignKeyConstraint\(/)
       assert.doesNotMatch(output, /constraint => constraint/)
@@ -841,12 +796,10 @@ describe('kysely-migration', () => {
       const expectedSnapshot = await createSnapshot(
         'online-shop-diff-customer-rename.valid.yaml'
       )
-      const { migrationSource: previousMigrationSource } =
-        await runMigrationShot('online-shop-initial.valid.yaml')
-      if (previousMigrationSource === undefined) {
-        throw new Error('previous migration source is missing')
-      }
-      await writeFile(previousMigrationPath, previousMigrationSource)
+      const { migration: previousSource } = await runMigrationShot(
+        'online-shop-initial.valid.yaml'
+      )
+      await writeFile(previousMigrationPath, previousSource)
 
       const { isFailed } = await runKyselyMigrationCli([
         fixturePath(

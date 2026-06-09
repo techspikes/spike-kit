@@ -27,11 +27,11 @@ export async function runSteps(args: string[]) {
   if (options.isHelp) return
 
   const source = await stepReadSource(options.filePath)
-  const previousMigrationSource = await stepReadPreviousMigration(options)
+  const previousSource = await stepReadPreviousMigration(options)
   const output = await stepCreateKyselyMigration(
     options,
     source,
-    previousMigrationSource
+    previousSource
   )
   if (options.dryRun) {
     logger.info('shot kysely-migration dry run completed')
@@ -131,11 +131,7 @@ async function stepReadSource(filePath: string) {
 async function stepReadPreviousMigration(options: KyselyMigrationOptions) {
   if (options.previousMigrationPath === undefined) return undefined
   try {
-    const previousMigrationSource = await readFile(
-      options.previousMigrationPath,
-      'utf8'
-    )
-    return previousMigrationSource
+    return await readFile(options.previousMigrationPath, 'utf8')
   } catch (error) {
     logger.error('Reading previous migration failed')
     logger.error((error as Error).message)
@@ -151,7 +147,7 @@ function stepLoadOpenApiSource(filePath: string) {
 async function stepCreateKyselyMigration(
   options: KyselyMigrationOptions,
   source: Buffer,
-  previousMigrationSource: string | undefined
+  previousSource: string | undefined
 ) {
   let errorStep = 'Parsing Data Sketch'
   const generatedAt = new Date().toISOString()
@@ -159,13 +155,9 @@ async function stepCreateKyselyMigration(
     const result = await shot({
       source: source.toString('utf8'),
       sourceName: options.filePath,
-      previousMigrationSource,
+      previousSource,
       includeTentative: options.includeTentative,
       generatedAt,
-      renderMode:
-        options.typesOutputPath === undefined
-          ? 'migration'
-          : 'migrationAndDatabaseTypes',
       sources: {
         openapi: stepLoadOpenApiSource(options.filePath)
       }
@@ -175,14 +167,7 @@ async function stepCreateKyselyMigration(
     }
     errorStep = 'Rendering migration'
 
-    /* c8 ignore next 3 */
-    if (result.migrationSource === undefined) {
-      throw new Error('Migration render output is missing')
-    }
-    return {
-      migrationSource: result.migrationSource,
-      databaseTypesSource: result.databaseTypesSource
-    }
+    return result
   } catch (error) {
     if ((error as Error).name === 'KyselyMigrationValidationError') {
       logger.error('Validating Data Sketch failed')
@@ -197,7 +182,7 @@ async function stepCreateKyselyMigration(
 
 async function stepWriteOutput(
   options: KyselyMigrationOptions,
-  output: { migrationSource: string; databaseTypesSource?: string }
+  output: { migration: string; types: string }
 ) {
   const finalOutputPath = resolveMigrationOutputPath(
     options.outputPath,
@@ -205,13 +190,9 @@ async function stepWriteOutput(
     new Date()
   )
   try {
-    await writeFile(finalOutputPath, output.migrationSource)
+    await writeFile(finalOutputPath, output.migration)
     if (options.typesOutputPath !== undefined) {
-      /* c8 ignore next 3 */
-      if (output.databaseTypesSource === undefined) {
-        throw new Error('Database types render output is missing')
-      }
-      await writeFile(options.typesOutputPath, output.databaseTypesSource)
+      await writeFile(options.typesOutputPath, output.types)
     }
   } catch (error) {
     logger.error('Writing migration failed')

@@ -7,14 +7,14 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "build": "tsc --noEmit && esbuild src/cli.ts --bundle --packages=external --platform=node --format=esm --outfile=dist/cli.js --banner:js='#!/usr/bin/env node' --minify",
+    "build": "tsc --noEmit && node scripts/esbuild.ts",
     "lint": "biome check .",
     "lint:fix": "biome check --fix .",
     "test": "tsc --noEmit && c8 --100 node --test  test/core/validator/validator.test.ts test/core/projector/projector.test.ts test/cli.test.ts test/commands/check/check.test.ts test/commands/table-spec/table-spec.test.ts test/commands/kysely-migration/kysely-migration.test.ts",
     "test:smoke": "npm run build && node --test test/smoke-cli.test.ts"
   },
   "bin": {
-    "shot": "dist/cli.js"
+    "shot": "dist/cli.mjs"
   },
   "files": [
     "dist",

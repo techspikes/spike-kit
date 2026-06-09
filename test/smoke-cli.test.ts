@@ -20,7 +20,7 @@ const require = createRequire(import.meta.url)
 const packageJson = require('../package.json') as { version: string }
 const basePath = fileURLToPath(import.meta.url)
 const baseDirectory = dirname(basePath)
-const cliPath = resolvePath(process.cwd(), 'dist', 'cli.js')
+const cliPath = resolvePath(process.cwd(), 'dist', 'cli.mjs')
 const checkFixturePath = resolveCommandFixtureFilePath(
   'check',
   'fixtures/online-shop-minimal.valid.yaml'
